@@ -1,0 +1,16 @@
+id,stock_no,asking_price,asking_price_unit,cash_price,cash_price_unit,availability,country,state,city,shape,size,color,clarity,show_on_OM,is_matched_pair,is_parcel,number_of_diamonds,specifications,status,created_by,user_id,created_at,updated_at
+1,DIA0001,5090.92,USD,4938.19,USD,Available,India,Gujarat,Ahmedabad,Princess,1.489,F,VVS2,TRUE,FALSE,FALSE,1,"{""cut"": ""Good"", ""polish"": ""Very Good"", ""symmetry"": ""Very Good"", ""fluorescence"": ""Faint""}",Pending,Normal Admin,,01-06-2026 10:01,01-06-2026 10:01
+2,DIA0002,6226.47,USD,6039.68,USD,Reserved,India,Gujarat,Ahmedabad,Princess,1.345,H,IF,TRUE,FALSE,FALSE,1,"{""cut"": ""Good"", ""polish"": ""Excellent"", ""symmetry"": ""Excellent"", ""fluorescence"": ""None""}",Pending,Normal Admin,,01-06-2026 10:02,01-06-2026 10:02
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
