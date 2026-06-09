@@ -81,7 +81,7 @@ class ShopifyController extends Controller
             $inventoryStatusFilter = $request->input('inventory_status');
 
             // Tab 1: Diamonds List (paginated with search & status filters)
-            $diamondsQuery = Diamond::query()->with(['shopifyProduct', 'user.activeShopifyStore']);
+            $diamondsQuery = Diamond::query()->with(['shopifyProduct', 'user.activeShopifyStore', 'holdShopifyStore', 'soldStore']);
             if ($activeTab === 'diamonds' && $searchQuery) {
                 $diamondsQuery->where(function($query) use ($searchQuery) {
                     $query->where('stock_no', 'like', "%{$searchQuery}%")
@@ -117,7 +117,15 @@ class ShopifyController extends Controller
             $jewelry = $jewelryQuery->orderBy('id', 'desc')->paginate(15, ['*'], 'jewelry_page')->appends($request->query());
 
             // Tab 3: Unified Shopify Products (paginated with search & status filters)
-            $shopifyProductsQuery = ShopifyProduct::query()->with(['product.user.activeShopifyStore', 'shopifyStore']);
+            $shopifyProductsQuery = ShopifyProduct::query()->with([
+                'shopifyStore',
+                'product' => function ($morphTo) {
+                    $morphTo->morphWith([
+                        \App\Models\Diamond::class => ['user.activeShopifyStore', 'holdShopifyStore', 'soldStore'],
+                        \App\Models\Jewelery::class => ['user.activeShopifyStore'],
+                    ]);
+                }
+            ]);
             if ($activeTab === 'synced' && $searchQuery) {
                 $shopifyProductsQuery->where(function($query) use ($searchQuery) {
                     $query->whereHasMorph('product', [Diamond::class], function($subQuery) use ($searchQuery) {

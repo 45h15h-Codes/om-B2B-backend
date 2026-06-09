@@ -87,36 +87,52 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/shopify/stores/{store}', [\App\Http\Controllers\ShopifyController::class, 'deleteStore'])->name('shopify.delete-store');
 
     // Orders Routes
-    Route::get('/admin/shopify/orders', [\App\Http\Controllers\ShopifyOrderController::class, 'index'])->name('admin.shopify.orders');
-    Route::get('/admin/shopify/orders/export', [\App\Http\Controllers\ShopifyOrderController::class, 'export'])->name('admin.shopify.orders.export');
-    Route::get('/admin/shopify/orders/{id}', [\App\Http\Controllers\ShopifyOrderController::class, 'show'])->name('admin.shopify.orders.show');
-    Route::post('/admin/shopify/orders/sync-recovery', [\App\Http\Controllers\ShopifyOrderController::class, 'runRecovery'])->name('admin.shopify.orders.sync-recovery');
+    Route::middleware('permission:view_shopify_orders')->group(function () {
+        Route::get('/admin/shopify/orders', [\App\Http\Controllers\ShopifyOrderController::class, 'index'])->name('admin.shopify.orders');
+        Route::get('/admin/shopify/orders/export', [\App\Http\Controllers\ShopifyOrderController::class, 'export'])->name('admin.shopify.orders.export');
+        Route::get('/admin/shopify/orders/{id}', [\App\Http\Controllers\ShopifyOrderController::class, 'show'])->name('admin.shopify.orders.show');
+        Route::post('/admin/shopify/orders/sync-recovery', [\App\Http\Controllers\ShopifyOrderController::class, 'runRecovery'])->name('admin.shopify.orders.sync-recovery');
+    });
     
-    Route::post('orders/{order}/approve', [\App\Http\Controllers\OrderController::class, 'approve'])->name('orders.approve');
-    Route::post('orders/{order}/send-invoice', [\App\Http\Controllers\OrderController::class, 'sendInvoice'])->name('orders.send-invoice');
-    Route::post('orders/{order}/retry', [\App\Http\Controllers\OrderController::class, 'retry'])->name('orders.retry');
-    Route::post('orders/{order}/complete', [\App\Http\Controllers\OrderController::class, 'complete'])->name('orders.complete');
-    Route::post('orders/{id}/restore', [\App\Http\Controllers\OrderController::class, 'restore'])->name('orders.restore');
-    Route::delete('orders/{id}/force-delete', [\App\Http\Controllers\OrderController::class, 'forceDelete'])->name('orders.force-delete');
-    Route::resource('orders', \App\Http\Controllers\OrderController::class)->names([
+    Route::middleware('permission:approve_orders')->group(function () {
+        Route::post('orders/{order}/approve', [\App\Http\Controllers\OrderController::class, 'approve'])->name('orders.approve');
+        Route::post('orders/{order}/send-invoice', [\App\Http\Controllers\OrderController::class, 'sendInvoice'])->name('orders.send-invoice');
+        Route::post('orders/{order}/retry', [\App\Http\Controllers\OrderController::class, 'retry'])->name('orders.retry');
+        Route::post('orders/{order}/complete', [\App\Http\Controllers\OrderController::class, 'complete'])->name('orders.complete');
+        Route::post('orders/{id}/restore', [\App\Http\Controllers\OrderController::class, 'restore'])->name('orders.restore');
+        Route::delete('orders/{id}/force-delete', [\App\Http\Controllers\OrderController::class, 'forceDelete'])->name('orders.force-delete');
+    });
+
+    Route::resource('orders', \App\Http\Controllers\OrderController::class)->only(['index', 'show'])->middleware('permission:view_orders')->names([
         'index' => 'orders.index',
+        'show' => 'orders.show',
+    ]);
+    Route::resource('orders', \App\Http\Controllers\OrderController::class)->except(['index', 'show'])->middleware('permission:create_orders')->names([
         'create' => 'orders.create',
         'store' => 'orders.store',
-        'show' => 'orders.show',
         'edit' => 'orders.edit',
         'update' => 'orders.update',
         'destroy' => 'orders.destroy',
     ]);
 
     // Unified Inventory Routes
-    Route::get('/inventory', [UnifiedInventoryController::class, 'index'])->name('inventory.index');
-    Route::post('/inventory/hold/{productType}/{productId}', [UnifiedInventoryController::class, 'hold'])->name('inventory.hold');
-    Route::post('/inventory/release/{productType}/{productId}', [UnifiedInventoryController::class, 'release'])->name('inventory.release');
-    Route::post('/inventory/sync/{productType}/{productId}', [UnifiedInventoryController::class, 'sync'])->name('inventory.sync');
-    Route::post('/inventory/bulk-hold', [UnifiedInventoryController::class, 'bulkHold'])->name('inventory.bulk-hold');
-    Route::post('/inventory/bulk-release', [UnifiedInventoryController::class, 'bulkRelease'])->name('inventory.bulk-release');
-    Route::post('/inventory/bulk-sync', [UnifiedInventoryController::class, 'bulkSync'])->name('inventory.bulk-sync');
-    Route::post('/inventory/bulk-assign', [UnifiedInventoryController::class, 'bulkAssign'])->name('inventory.bulk-assign');
+    Route::middleware('permission:view_inventory')->group(function () {
+        Route::get('/inventory', [UnifiedInventoryController::class, 'index'])->name('inventory.index');
+        Route::post('/inventory/sync/{productType}/{productId}', [UnifiedInventoryController::class, 'sync'])->name('inventory.sync');
+        Route::post('/inventory/bulk-sync', [UnifiedInventoryController::class, 'bulkSync'])->name('inventory.bulk-sync');
+        Route::post('/inventory/bulk-assign', [UnifiedInventoryController::class, 'bulkAssign'])->name('inventory.bulk-assign');
+    });
+
+    Route::middleware('permission:hold_inventory')->group(function () {
+        Route::post('/inventory/hold/{productType}/{productId}', [UnifiedInventoryController::class, 'hold'])->name('inventory.hold');
+        Route::post('/inventory/bulk-hold', [UnifiedInventoryController::class, 'bulkHold'])->name('inventory.bulk-hold');
+    });
+
+    Route::middleware('permission:release_inventory')->group(function () {
+        Route::post('/inventory/release/{productType}/{productId}', [UnifiedInventoryController::class, 'release'])->name('inventory.release');
+        Route::post('/inventory/bulk-release', [UnifiedInventoryController::class, 'bulkRelease'])->name('inventory.bulk-release');
+    });
+
     Route::get('/bulk-operations/status/{id}', [\App\Http\Controllers\BulkOperationsController::class, 'status'])->name('bulk-operations.status');
 
     // Workflow Requests Routes
@@ -127,35 +143,44 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/inventory/request/{id}/reject', [InventoryRequestController::class, 'reject'])->name('inventory.request.reject');
 
     // Inventory History Routes
-    Route::get('/inventory-history', [InventoryHistoryController::class, 'index'])->name('inventory-history.index');
-    Route::get('/inventory/timeline', [\App\Http\Controllers\InventoryTimelineController::class, 'index'])->name('inventory.timeline');
+    Route::middleware('permission:view_inventory_history')->group(function () {
+        Route::get('/inventory-history', [InventoryHistoryController::class, 'index'])->name('inventory-history.index');
+        Route::get('/inventory/timeline', [\App\Http\Controllers\InventoryTimelineController::class, 'index'])->name('inventory.timeline');
+    });
 
     // Notifications Routes
-    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
-    Route::post('/notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
-    Route::get('/notifications/read/{id}', [NotificationController::class, 'readSingle'])->name('notifications.read-single');
-    Route::get('/notifications/api/latest', [NotificationController::class, 'latest'])->name('notifications.api.latest');
-    Route::post('/notifications/api/read-all', [NotificationController::class, 'readAllAjax'])->name('notifications.api.read-all');
-    Route::post('/notifications/api/read/{id}', [NotificationController::class, 'readSingleAjax'])->name('notifications.api.read-single-ajax');
+    Route::middleware('permission:view_notifications')->group(function () {
+        Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+        Route::post('/notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
+        Route::get('/notifications/read/{id}', [NotificationController::class, 'readSingle'])->name('notifications.read-single');
+        Route::get('/notifications/api/latest', [NotificationController::class, 'latest'])->name('notifications.api.latest');
+        Route::post('/notifications/api/read-all', [NotificationController::class, 'readAllAjax'])->name('notifications.api.read-all');
+        Route::post('/notifications/api/read/{id}', [NotificationController::class, 'readSingleAjax'])->name('notifications.api.read-single-ajax');
 
-    Route::post('/notifications/read/{id}', [NotificationController::class, 'markRead'])->name('notifications.mark-read');
-    Route::post('/notifications/unread/{id}', [NotificationController::class, 'markUnread'])->name('notifications.mark-unread');
-    Route::post('/notifications/delete/{id}', [NotificationController::class, 'delete'])->name('notifications.delete');
-    Route::post('/notifications/delete-all', [NotificationController::class, 'deleteAll'])->name('notifications.delete-all');
-    Route::post('/notifications/delete-read', [NotificationController::class, 'deleteRead'])->name('notifications.delete-read');
-    Route::post('/notifications/delete-multiple', [NotificationController::class, 'deleteMultiple'])->name('notifications.delete-multiple');
-    Route::post('/notifications/mark-read-multiple', [NotificationController::class, 'markReadMultiple'])->name('notifications.mark-read-multiple');
+        Route::post('/notifications/read/{id}', [NotificationController::class, 'markRead'])->name('notifications.mark-read');
+        Route::post('/notifications/unread/{id}', [NotificationController::class, 'markUnread'])->name('notifications.mark-unread');
+        Route::post('/notifications/delete/{id}', [NotificationController::class, 'delete'])->name('notifications.delete');
+        Route::post('/notifications/delete-all', [NotificationController::class, 'deleteAll'])->name('notifications.delete-all');
+        Route::post('/notifications/delete-read', [NotificationController::class, 'deleteRead'])->name('notifications.delete-read');
+        Route::post('/notifications/delete-multiple', [NotificationController::class, 'deleteMultiple'])->name('notifications.delete-multiple');
+        Route::post('/notifications/mark-read-multiple', [NotificationController::class, 'markReadMultiple'])->name('notifications.mark-read-multiple');
+    });
 
     // Revenue Analytics Dashboard Route
-    Route::get('/analytics/revenue', [\App\Http\Controllers\RevenueAnalyticsController::class, 'index'])->name('analytics.revenue');
+    Route::get('/analytics/revenue', [\App\Http\Controllers\RevenueAnalyticsController::class, 'index'])->name('analytics.revenue')
+        ->middleware('permission:view_revenue');
 
     // Reporting Module Routes
-    Route::get('/reports', [\App\Http\Controllers\ReportController::class, 'index'])->name('reports.index');
-    Route::get('/reports/export', [\App\Http\Controllers\ReportController::class, 'exportCsv'])->name('reports.export');
+    Route::get('/reports', [\App\Http\Controllers\ReportController::class, 'index'])->name('reports.index')
+        ->middleware('permission:view_reports');
+    Route::get('/reports/export', [\App\Http\Controllers\ReportController::class, 'exportCsv'])->name('reports.export')
+        ->middleware('permission:export_reports');
 
     // System Health Dashboard Route
-    Route::get('/system/health', [\App\Http\Controllers\SystemHealthController::class, 'index'])->name('system.health');
-    Route::get('/system/activity-logs', [\App\Http\Controllers\ActivityLogController::class, 'index'])->name('system.activity-logs.index');
+    Route::get('/system/health', [\App\Http\Controllers\SystemHealthController::class, 'index'])->name('system.health')
+        ->middleware('permission:view_system_health');
+    Route::get('/system/activity-logs', [\App\Http\Controllers\ActivityLogController::class, 'index'])->name('system.activity-logs.index')
+        ->middleware('permission:view_audit_logs');
 
     // Import History Route
     Route::get('/system/imports-history', [\App\Http\Controllers\ImportHistoryController::class, 'index'])->name('system.imports-history.index');

@@ -320,7 +320,7 @@ class ShopifyInventoryHoldTest extends TestCase
         Queue::assertPushed(\App\Jobs\LockInventoryAcrossStoresJob::class, function ($job) use ($diamond, $storeA) {
             return $job->productType === 'diamond' && $job->productId === $diamond->id && $job->originStoreId === $storeA->id;
         });
-        // --- STEP 2: Send orders/paid from Store A ---
+        // --- STEP 2: Send orders/paid from Store A (remains on_hold) ---
         $response2 = $this->json(
             'POST',
             '/api/shopify/webhooks',
@@ -333,6 +333,36 @@ class ShopifyInventoryHoldTest extends TestCase
         );
 
         $response2->assertStatus(202);
+
+        $diamond->refresh();
+        $this->assertEquals('on_hold', $diamond->inventory_status);
+
+        // --- STEP 3: Send fulfillments/create from Store A (transitions to sold) ---
+        $fulfillmentPayload = [
+            'id' => 'ful_111',
+            'order_id' => 999111,
+            'line_items' => [
+                [
+                    'product_id' => 111,
+                    'variant_id' => 112,
+                    'quantity' => 1,
+                    'price' => '1800.00'
+                ]
+            ]
+        ];
+
+        $response3 = $this->json(
+            'POST',
+            '/api/shopify/webhooks',
+            $fulfillmentPayload,
+            [
+                'X-Shopify-Topic' => 'fulfillments/create',
+                'X-Shopify-Shop-Domain' => 'store-a.myshopify.com',
+                'X-Shopify-Webhook-Id' => 'wb_fulfill_1',
+            ]
+        );
+
+        $response3->assertStatus(202);
 
         // Verify status is SOLD
         $diamond->refresh();

@@ -317,7 +317,7 @@ class ShopifyWebhookTest extends TestCase
             'created_at' => now()->subDays(5)->toIso8601String(), // 5 days ago
             'total_price' => '1800.00',
             'financial_status' => 'paid',
-            'fulfillment_status' => null,
+            'fulfillment_status' => 'fulfilled',
             'line_items' => [
                 [
                     'id' => 'li_sync_1',

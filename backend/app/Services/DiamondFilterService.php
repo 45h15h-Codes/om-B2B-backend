@@ -20,7 +20,16 @@ class DiamondFilterService
     {
         // 1. Role-based scoping
         if (session('admin_role', 'normal_admin') !== 'super_admin') {
-            $query->where('assigned_admin_id', Auth::id());
+            $userId = Auth::id();
+            $storeIds = \App\Models\ShopifyStore::where('user_id', $userId)->pluck('id')->toArray();
+
+            $query->where(function ($q) use ($userId, $storeIds) {
+                $q->where('assigned_admin_id', $userId)
+                  ->orWhere('user_id', $userId)
+                  ->orWhereHas('storeAssignments', function ($sub) use ($storeIds) {
+                      $sub->whereIn('shopify_store_id', $storeIds);
+                  });
+            });
         }
 
         if ($request->filled('inventory_status')) {

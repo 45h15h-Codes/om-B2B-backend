@@ -653,10 +653,11 @@
                                     @if(($diamond->inventory_status ?? 'available') === 'available')
                                         <span class="sync-badge synced"><i class="fa-solid fa-circle-check"></i> Available</span>
                                     @elseif($diamond->inventory_status === 'on_hold')
-                                        <span class="sync-badge pending"><i class="fa-solid fa-clock"></i> Hold</span>
+                                        <span class="sync-badge pending"><i class="fa-solid fa-clock"></i> On Hold</span>
                                     @elseif($diamond->inventory_status === 'sold')
                                         <span class="sync-badge failed"><i class="fa-solid fa-circle-xmark"></i> Sold</span>
                                     @endif
+                                    <span style="font-size:10px;color:gray;display:block;">Debug: {{ $diamond->inventory_status }}</span>
                                 </td>
                                 <td>
                                     @if(!$sync)
@@ -770,7 +771,7 @@
                                     @if(($item->inventory_status ?? 'available') === 'available')
                                         <span class="sync-badge synced"><i class="fa-solid fa-circle-check"></i> Available</span>
                                     @elseif($item->inventory_status === 'on_hold')
-                                        <span class="sync-badge pending"><i class="fa-solid fa-clock"></i> Hold</span>
+                                        <span class="sync-badge pending"><i class="fa-solid fa-clock"></i> On Hold</span>
                                     @elseif($item->inventory_status === 'sold')
                                         <span class="sync-badge failed"><i class="fa-solid fa-circle-xmark"></i> Sold</span>
                                     @endif
@@ -851,6 +852,7 @@
                             <th>Product Details</th>
                             <th>Catalog Type</th>
                             <th>Shopify Product ID</th>
+                            <th>Shopify Status</th>
                             <th>Admin / Store</th>
                             <th>Sync Status</th>
                             <th>Synced At</th>
@@ -899,6 +901,20 @@
                                     @else
                                         -
                                     @endif
+                                </td>
+                                <td>
+                                    @if(($sync->shopify_status ?? 'draft') === 'active')
+                                        <span class="badge" style="background-color: #dcfce7; color: #166534; font-weight: 700; padding: 4px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-circle-play"></i> Active</span>
+                                    @elseif(($sync->shopify_status ?? 'draft') === 'draft')
+                                        @if($product && in_array($product->inventory_status, ['on_hold', 'sold']))
+                                            <span class="badge" style="background-color: #fef3c7; color: #92400e; font-weight: 700; padding: 4px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Drafted due to inventory lock/hold"><i class="fa-solid fa-lock"></i> Draft (Locked)</span>
+                                        @else
+                                            <span class="badge" style="background-color: #f1f5f9; color: #475569; font-weight: 700; padding: 4px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-file-pen"></i> Draft</span>
+                                        @endif
+                                    @elseif(($sync->shopify_status ?? 'draft') === 'archived')
+                                        <span class="badge" style="background-color: #fee2e2; color: #991b1b; font-weight: 700; padding: 4px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;"><i class="fa-solid fa-box-archive"></i> Archived</span>
+                                    @endif
+                                    <span style="font-size:10px;color:gray;display:block;">Debug: {{ $sync->shopify_status }}</span>
                                 </td>
                                 <td>
                                     @if($sync->product && $sync->product->user)

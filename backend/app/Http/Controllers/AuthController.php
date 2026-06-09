@@ -31,9 +31,9 @@ class AuthController extends Controller
         if (Auth::attempt($credentials)) {
             $request->session()->regenerate();
             
-            // Sync session role key to match authenticated user's role
             $user = Auth::user();
             session(['admin_role' => $user->role]);
+            $user->refreshPermissionsCache();
 
             \App\Services\AuditService::log('login', null, null, null, $user->id);
 

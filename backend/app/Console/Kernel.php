@@ -17,6 +17,7 @@ class Kernel extends ConsoleKernel
     {
         // $schedule->command('inspire')->hourly();
         $schedule->command('shopify:sync-recovery')->everyFifteenMinutes();
+        $schedule->command('shopify:expire-unpaid')->everyFifteenMinutes();
         $schedule->command('sys:monitor-health')->everyFifteenMinutes();
         $schedule->command('sys:expire-reservations')->everyMinute();
         $schedule->command('sys:verify-cross-store')->daily();

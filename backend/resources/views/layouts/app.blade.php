@@ -709,14 +709,18 @@
                 <span>Add on User</span>
             </div>
             @endif
-             @if($isSuper)
-                <!-- Reports & Analytics (Super Admin Only) -->
+
+            @if($isSuper || Auth::user()->hasAnyPermission(['view_revenue', 'view_reports']))
+                <!-- Reports & Analytics -->
                 <div class="sidebar-section-header" style="padding: 10px 24px 5px 24px; font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 0.5px;">Reports & Analytics</div>
                 
-                <a href="{{ route('analytics.revenue') }}" class="sidebar-item {{ Route::is('analytics.revenue') ? 'active' : '' }}">
-                    <i class="fa-solid fa-chart-line"></i>
-                    <span>Revenue Dashboard</span>
-                </a>
+                @if(Auth::user()->hasPermission('view_revenue'))
+                    <a href="{{ route('analytics.revenue') }}" class="sidebar-item {{ Route::is('analytics.revenue') ? 'active' : '' }}">
+                        <i class="fa-solid fa-chart-line"></i>
+                        <span>Revenue Dashboard</span>
+                    </a>
+                @endif
+
             @endif
         </div>
     </div>
@@ -769,12 +773,16 @@
                     <a href="{{ route('shopify.stores') }}" class="header-nav-link {{ Route::is('shopify.stores') ? 'active' : '' }}">
                         Manage Stores
                     </a>
-                    <a href="{{ route('orders.index') }}" class="header-nav-link {{ Route::is('orders.*') ? 'active' : '' }}">
-                        Orders
-                    </a>
+                    @if(Auth::user()->hasPermission('view_orders'))
+                        <a href="{{ route('orders.index') }}" class="header-nav-link {{ Route::is('orders.*') ? 'active' : '' }}">
+                            Orders
+                        </a>
+                    @endif
+                    @if(Auth::user()->hasPermission('view_shopify_orders'))
                         <a href="{{ route('admin.shopify.orders') }}" class="header-nav-link {{ Route::is('admin.shopify.orders') ? 'active' : '' }}">
                             Shopify Orders
                         </a>
+                    @endif
                 @else
                     <a href="{{ route('home') }}" class="header-nav-link active">
                         Dashboard
@@ -785,6 +793,7 @@
             <!-- Header Actions -->
             <div class="header-actions">
                 @auth
+                    @if(Auth::user()->hasPermission('view_notifications'))
                     <!-- Notification Bell Dropdown -->
                     <div class="profile-dropdown-container" style="margin-right: 10px;">
                         <div class="user-avatar" onclick="toggleNotificationDropdown(event)" style="cursor: pointer; position: relative;">
@@ -840,6 +849,7 @@
                             </div>
                         </div>
                     </div>
+                    @endif
 
                     <span class="role-badge-btn {{ session('admin_role') === 'super_admin' ? 'super_admin' : 'normal_admin' }}" style="cursor: default;">
                         <span class="role-indicator-dot"></span>

@@ -2,16 +2,8 @@
 
 @section('content')
 <div style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); overflow: hidden; margin-bottom: 30px;">
-    
-    <!-- Header -->
-    <div style="padding: 24px 30px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; background-color: var(--primary-light);">
-        <div>
-            <h2 style="font-size: 20px; font-weight: 700; color: var(--primary-color); display: flex; align-items: center; gap: 8px;">
-                <i class="fa-solid fa-file-invoice"></i> Reports Center
-            </h2>
-            <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Compile and export detailed logs, product listings, store performance, and sales data summaries.</p>
-        </div>
-    </div>
+
+
 
     <!-- Reports Filter Toolbar -->
     <div style="padding: 20px 30px; border-bottom: 1px solid var(--border-color); background: #fafbfc;">

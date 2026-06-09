@@ -102,10 +102,12 @@ class DiamondController extends Controller
         $labs = Category::getNames('lab');
         $shapeImages = Category::getOptionsMap('shape');
 
+        $shopifyStores = \App\Models\ShopifyStore::all();
+
         return view('diamonds.index', compact(
             'diamonds', 'stats', 'searchStats', 
             'basicShapes', 'advanceShapes', 'whiteColors', 'fancyColors', 
-            'clarities', 'labs', 'shapeImages'
+            'clarities', 'labs', 'shapeImages', 'shopifyStores'
         ));
     }
 
@@ -222,7 +224,8 @@ class DiamondController extends Controller
     public function show(Diamond $diamond)
     {
         $this->authorize('view', $diamond);
-        return view('diamonds.show', compact('diamond'));
+        $shopifyStores = \App\Models\ShopifyStore::all();
+        return view('diamonds.show', compact('diamond', 'shopifyStores'));
     }
 
     /**
@@ -233,7 +236,7 @@ class DiamondController extends Controller
      */
     public function edit(Diamond $diamond)
     {
-        $this->authorize('update', $diamond);
+        $this->authorize('edit', $diamond);
         $categories = Category::all()->groupBy('type');
         return view('diamonds.edit', compact('diamond', 'categories'));
     }
@@ -247,7 +250,11 @@ class DiamondController extends Controller
      */
     public function update(Request $request, Diamond $diamond)
     {
-        $this->authorize('update', $diamond);
+        $this->authorize('edit', $diamond);
+
+        if ($diamond->inventory_status === 'sold') {
+            return redirect()->back()->with('error', 'Update failed: Cannot edit or update a sold diamond.');
+        }
 
         try {
             return BackgroundJobService::track('diamond_update', function($job) use ($request, $diamond) {
@@ -276,6 +283,7 @@ class DiamondController extends Controller
             return redirect()->back()->with('error', 'Update failed: ' . $e->getMessage());
         }
     }
+
     /**
      * Remove the specified resource from storage.
      *
@@ -312,20 +320,74 @@ class DiamondController extends Controller
     /**
      * Approve the specified diamond.
      *
+     * @param  \Illuminate\Http\Request  $request
      * @param  \App\Models\Diamond  $diamond
      * @return \Illuminate\Http\Response
      */
-    public function approve(Diamond $diamond)
+    public function approve(Request $request, Diamond $diamond)
     {
         if (session('admin_role', 'normal_admin') !== 'super_admin') {
             return redirect()->to(session('diamonds_search_url', route('diamonds.index')))->with('error', 'Unauthorized action.');
         }
 
-        try {
-            return BackgroundJobService::track('diamond_approve', function($job) use ($diamond) {
-                $diamond->update(['status' => Diamond::STATUS_APPROVED]);
+        if ($diamond->inventory_status === 'sold') {
+            return redirect()->to(session('diamonds_search_url', route('diamonds.index')))->with('error', 'Approval failed: Cannot approve or update a sold diamond.');
+        }
 
-                $job->message = "Approved diamond: " . ($diamond->stock_no ?? $diamond->id);
+        // Validate store_ids
+        $request->validate([
+            'store_ids' => 'required|array',
+            'store_ids.*' => 'exists:shopify_stores,id',
+            'is_published' => 'nullable|array',
+        ]);
+
+        $storeIds = $request->input('store_ids', []);
+        $isPublishedMap = $request->input('is_published', []);
+
+        try {
+            return BackgroundJobService::track('diamond_approve', function($job) use ($diamond, $storeIds, $isPublishedMap) {
+                \Illuminate\Support\Facades\DB::transaction(function () use ($diamond, $storeIds, $isPublishedMap) {
+                    $diamond->update(['status' => Diamond::STATUS_APPROVED]);
+
+                    // Delete assignments not in selected storeIds list
+                    \App\Models\DiamondStoreAssignment::where('diamond_id', $diamond->id)
+                        ->whereNotIn('shopify_store_id', $storeIds)
+                        ->delete();
+
+                    // Create/update selected assignments
+                    foreach ($storeIds as $storeId) {
+                        $isPublished = isset($isPublishedMap[$storeId]) && (bool)$isPublishedMap[$storeId];
+
+                        \App\Models\DiamondStoreAssignment::updateOrCreate(
+                            [
+                                'diamond_id' => $diamond->id,
+                                'shopify_store_id' => $storeId,
+                            ],
+                            [
+                                'assigned_by' => auth()->id() ?? 1,
+                                'is_published' => $isPublished,
+                            ]
+                        );
+
+                        // Create shopify_products mapping placeholder
+                        \App\Models\ShopifyProduct::firstOrCreate(
+                            [
+                                'product_type' => 'diamond',
+                                'product_id' => $diamond->id,
+                                'shopify_store_id' => $storeId,
+                            ],
+                            [
+                                'sync_status' => 'pending',
+                                'shopify_status' => 'draft',
+                            ]
+                        );
+
+                        // Dispatch PublishDiamondToShopifyJob for each store
+                        \App\Jobs\PublishDiamondToShopifyJob::dispatch($diamond->id, $storeId);
+                    }
+                });
+
+                $job->message = "Approved diamond: " . ($diamond->stock_no ?? $diamond->id) . " and assigned to " . count($storeIds) . " storefront(s).";
 
                 return redirect()->to(session('diamonds_search_url', route('diamonds.index')))->with('success', 'Diamond has been approved.');
             });
@@ -708,7 +770,7 @@ class DiamondController extends Controller
         try {
             return BackgroundJobService::track('image_upload', function($job) use ($file, $directory) {
                 $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
-                $file->move(public_path($directory), $fileName);
+                \Illuminate\Support\Facades\Storage::disk('public_uploads')->putFileAs($directory, $file, $fileName);
                 $localPath = $directory . '/' . $fileName;
                 
                 $job->message = "Uploaded file " . $file->getClientOriginalName() . " locally.";

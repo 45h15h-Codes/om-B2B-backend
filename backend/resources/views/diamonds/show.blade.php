@@ -130,10 +130,156 @@
         transition: all 0.2s ease;
     }
 
-    .media-action-link:hover {
-        border-color: var(--primary-color);
-        color: var(--primary-color);
-        background-color: var(--primary-light);
+    }
+
+    /* Custom Confirmation Modal Dialog */
+    .confirm-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.4);
+        display: none;
+        z-index: 9999;
+        animation: fadeIn 0.2s ease-out;
+    }
+
+    .confirm-modal-overlay.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .confirm-modal-box {
+        background-color: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        padding: 32px;
+        max-width: 450px;
+        width: 90%;
+        animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .confirm-modal-header {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text-color);
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .confirm-modal-header i {
+        font-size: 24px;
+        color: var(--error-color);
+    }
+
+    .confirm-modal-message {
+        font-size: 14px;
+        color: var(--text-muted);
+        margin-bottom: 24px;
+        line-height: 1.5;
+    }
+
+    .confirm-modal-footer {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+    }
+
+    .confirm-modal-btn {
+        border: none;
+        border-radius: 6px;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        pointer-events: auto;
+    }
+
+    .confirm-modal-btn-cancel {
+        background-color: #f1f5f9;
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+    }
+
+    .confirm-modal-btn-cancel:hover {
+        background-color: #e2e8f0;
+    }
+
+    .confirm-modal-btn-confirm {
+        background-color: var(--error-color);
+        color: white;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+
+    @keyframes slideUp {
+        from {
+            transform: translateY(20px);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    /* Toggle Switch styling for Approval Modal */
+    .switch {
+        position: relative;
+        display: inline-block;
+        width: 36px;
+        height: 20px;
+        vertical-align: middle;
+    }
+
+    .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #cbd5e1;
+        transition: .3s;
+        border-radius: 20px;
+    }
+
+    .slider:before {
+        position: absolute;
+        content: "";
+        height: 14px;
+        width: 14px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: .3s;
+        border-radius: 50%;
+    }
+
+    input:checked + .slider {
+        background-color: var(--primary-color, #108bb6);
+    }
+
+    input:checked + .slider:before {
+        transform: translateX(16px);
     }
 </style>
 
@@ -158,12 +304,11 @@
         
         @if($isAdmin)
             @if($diamond->status !== 'Approved')
-                <form action="{{ route('diamonds.approve', $diamond->id) }}" method="POST" style="display: inline-block;">
-                    @csrf
-                    <button type="submit" class="btn btn-success" style="background-color: var(--success-color); color: white; border: none; font-weight: 600; padding: 10px 20px; border-radius: 8px; display: flex; align-items: center; gap: 8px; cursor: pointer; box-shadow: 0 4px 12px rgba(56, 161, 105, 0.2);">
-                        <i class="fa-solid fa-circle-check"></i> Approve
-                    </button>
-                </form>
+                <button type="button" class="btn btn-success" 
+                        onclick="openApproveModal('{{ route('diamonds.approve', $diamond->id) }}', event)"
+                        style="background-color: var(--success-color); color: white; border: none; font-weight: 600; padding: 10px 20px; border-radius: 8px; display: flex; align-items: center; gap: 8px; cursor: pointer; box-shadow: 0 4px 12px rgba(56, 161, 105, 0.2);">
+                    <i class="fa-solid fa-circle-check"></i> Approve
+                </button>
             @endif
             @if($diamond->status !== 'Rejected')
                 <form action="{{ route('diamonds.reject', $diamond->id) }}" method="POST" style="display: inline-block;">
@@ -224,6 +369,57 @@
                         {{ implode(', ', array_filter([$diamond->city, $diamond->state, $diamond->country])) ?: 'N/A' }}
                     </span>
                 </div>
+                <div class="spec-item">
+                    <span class="spec-label">Inventory Status</span>
+                    <span class="spec-value">
+                        @if(($diamond->inventory_status ?? 'available') === 'available')
+                            <span class="badge badge-approved" style="padding: 4px 8px; font-size: 11px; font-weight: 700; border-left: none; background-color: #dcfce7; color: #166534;">Available</span>
+                        @elseif($diamond->inventory_status === 'on_hold')
+                            <span class="badge badge-pending" style="padding: 4px 8px; font-size: 11px; font-weight: 700; border-left: none; background-color: #fef3c7; color: #92400e;">On Hold</span>
+                        @elseif($diamond->inventory_status === 'sold')
+                            <span class="badge badge-rejected" style="padding: 4px 8px; font-size: 11px; font-weight: 700; border-left: none; background-color: #fee2e2; color: #991b1b;">Sold</span>
+                        @endif
+                    </span>
+                </div>
+                @if(($diamond->inventory_status ?? 'available') === 'on_hold')
+                    <div class="spec-item">
+                        <span class="spec-label">Hold Reason</span>
+                        <span class="spec-value">{{ $diamond->hold_reason ?: 'N/A' }}</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">Hold At</span>
+                        <span class="spec-value">{{ $diamond->hold_at ? \Carbon\Carbon::parse($diamond->hold_at)->format('Y-m-d H:i:s') : 'N/A' }}</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">Holding Store</span>
+                        <span class="spec-value">
+                            @if($diamond->holdShopifyStore)
+                                {{ $diamond->holdShopifyStore->store_name }}
+                            @elseif($diamond->hold_shopify_store_id)
+                                Store ID: {{ $diamond->hold_shopify_store_id }}
+                            @else
+                                N/A
+                            @endif
+                        </span>
+                    </div>
+                @elseif(($diamond->inventory_status ?? 'available') === 'sold')
+                    <div class="spec-item">
+                        <span class="spec-label">Sold Store</span>
+                        <span class="spec-value">
+                            @if($diamond->soldStore)
+                                {{ $diamond->soldStore->store_name }}
+                            @elseif($diamond->sold_store_id)
+                                Store ID: {{ $diamond->sold_store_id }}
+                            @else
+                                N/A
+                            @endif
+                        </span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">Sold At</span>
+                        <span class="spec-value">{{ $diamond->sold_at ? \Carbon\Carbon::parse($diamond->sold_at)->format('Y-m-d H:i:s') : 'N/A' }}</span>
+                    </div>
+                @endif
             </div>
         </div>
 
@@ -550,4 +746,128 @@
         @endif
     </div>
 </div>
+
+@if($isAdmin)
+<!-- Super Admin Diamond Approval Modal -->
+<div id="approveModalOverlay" class="confirm-modal-overlay">
+    <div class="confirm-modal-box" style="max-width: 500px;">
+        <div class="confirm-modal-header" style="color: var(--success-color, #2b6cb0);">
+            <i class="fa-solid fa-circle-check"></i>
+            <span>Approve & Sync Diamond</span>
+        </div>
+        <form id="approveModalForm" method="POST">
+            @csrf
+            <div class="confirm-modal-message" style="margin-bottom: 16px;">
+                Select the Shopify storefronts to publish this diamond to:
+            </div>
+            
+            <div style="max-height: 250px; overflow-y: auto; margin-bottom: 20px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; padding: 12px; background-color: #f8fafc;">
+                @forelse($shopifyStores as $store)
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border-color, #e2e8f0); margin-bottom: 8px;">
+                        <label style="display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 14px; cursor: pointer; color: var(--text-color, #2d3748); margin-bottom: 0;">
+                            <input type="checkbox" name="store_ids[]" value="{{ $store->id }}" id="store_checkbox_{{ $store->id }}" class="store-checkbox" onchange="toggleStorePublishState({{ $store->id }})" style="width: 18px; height: 18px; cursor: pointer; vertical-align: middle;">
+                            <span>{{ $store->store_name }} ({{ $store->shop_domain }})</span>
+                        </label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 12px; font-weight: 500; color: var(--text-muted, #718096);">Publish:</span>
+                            <!-- Toggle switch -->
+                            <label class="switch" style="margin-bottom: 0;">
+                                <input type="hidden" name="is_published[{{ $store->id }}]" value="0">
+                                <input type="checkbox" name="is_published[{{ $store->id }}]" value="1" id="publish_checkbox_{{ $store->id }}" class="publish-checkbox" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                @empty
+                    <div style="padding: 16px; text-align: center; color: var(--text-muted, #718096); font-size: 14px;">
+                        <i class="fa-solid fa-triangle-exclamation" style="font-size: 20px; color: var(--warning-color, #dd6b20); margin-bottom: 8px; display: block;"></i>
+                        No Shopify storefronts connected.
+                    </div>
+                @endforelse
+            </div>
+
+            <div class="confirm-modal-footer">
+                <button type="button" class="confirm-modal-btn confirm-modal-btn-cancel" onclick="closeApproveModal()">
+                    Cancel
+                </button>
+                @if($shopifyStores->isEmpty())
+                    <button type="submit" class="confirm-modal-btn" style="background-color: #cbd5e1; color: #64748b; cursor: not-allowed;" disabled>
+                        <i class="fa-solid fa-circle-check"></i> Approve & Sync
+                    </button>
+                @else
+                    <button type="submit" class="confirm-modal-btn" style="background-color: var(--success-color, #48bb78); color: white;">
+                        <i class="fa-solid fa-circle-check"></i> Approve & Sync
+                    </button>
+                @endif
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    window.openApproveModal = function(actionUrl, event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        const form = document.getElementById('approveModalForm');
+        form.action = actionUrl;
+        
+        // Reset and check all storefront checkboxes and publish switches
+        const storeCheckboxes = form.querySelectorAll('.store-checkbox');
+        storeCheckboxes.forEach(cb => {
+            cb.checked = true;
+            const storeId = cb.value;
+            const publishCheckbox = document.getElementById(`publish_checkbox_${storeId}`);
+            if (publishCheckbox) {
+                publishCheckbox.checked = true;
+                publishCheckbox.disabled = false;
+                const label = publishCheckbox.closest('label');
+                if (label) label.style.opacity = '1';
+            }
+        });
+        
+        const overlay = document.getElementById('approveModalOverlay');
+        if (overlay) {
+            overlay.classList.add('active');
+        }
+    };
+
+    window.closeApproveModal = function() {
+        const overlay = document.getElementById('approveModalOverlay');
+        if (overlay) {
+            overlay.classList.remove('active');
+        }
+    };
+
+    window.toggleStorePublishState = function(storeId) {
+        const storeCheckbox = document.getElementById(`store_checkbox_${storeId}`);
+        const publishCheckbox = document.getElementById(`publish_checkbox_${storeId}`);
+        if (storeCheckbox && publishCheckbox) {
+            const label = publishCheckbox.closest('label');
+            if (!storeCheckbox.checked) {
+                publishCheckbox.checked = false;
+                publishCheckbox.disabled = true;
+                if (label) label.style.opacity = '0.5';
+            } else {
+                publishCheckbox.checked = true;
+                publishCheckbox.disabled = false;
+                if (label) label.style.opacity = '1';
+            }
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const overlay = document.getElementById('approveModalOverlay');
+        if (overlay) {
+            overlay.addEventListener('click', function(e) {
+                if (e.target === overlay) {
+                    closeApproveModal();
+                }
+            });
+        }
+    });
+</script>
+@endif
+
 @endsection

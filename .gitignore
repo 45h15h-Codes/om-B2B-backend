@@ -17,3 +17,16 @@
 .vscode/
 Thumbs.db
 .DS_Store
+
+# User Uploads Fallbacks and Reports
+/backend/public/images/jewelery/*
+!/backend/public/images/jewelery/.gitkeep
+/backend/public/images/categories/*
+!/backend/public/images/categories/.gitkeep
+/backend/public/images/*.jpg
+/backend/public/images/*.jpeg
+/backend/public/images/*.png
+/backend/public/images/*.webp
+/backend/public/images/*.gif
+/backend/public/reports/*
+!/backend/public/reports/.gitkeep

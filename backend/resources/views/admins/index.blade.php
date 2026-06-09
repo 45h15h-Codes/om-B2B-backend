@@ -438,6 +438,7 @@
                                         data-id="{{ $admin->id }}"
                                         data-name="{{ $admin->name }}"
                                         data-email="{{ $admin->email }}"
+                                        data-permissions="{{ json_encode($admin->permissions->pluck('permission')) }}"
                                         data-update-url="{{ route('admins.update', $admin->id) }}">
                                         <i class="fa-solid fa-pen-to-square"></i> Edit
                                     </button>
@@ -510,6 +511,30 @@
                 <div class="modal-form-group">
                     <label for="modal-password-confirm">Confirm Password</label>
                     <input type="password" id="modal-password-confirm" name="password_confirmation" class="modal-form-input" placeholder="Re-enter password" required autocomplete="new-password">
+                </div>
+
+                <!-- Permissions Checklist -->
+                <div class="modal-form-group" style="margin-top: 24px;">
+                    <label style="margin-bottom: 12px; display: block; font-weight: 700; font-size: 11px; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Permissions</label>
+                    <div style="display: flex; flex-direction: column; gap: 16px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
+                        @foreach(config('admin_permissions') as $module => $perms)
+                            <div>
+                                <span style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">
+                                    {{ ucfirst($module) }}
+                                </span>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px;">
+                                    @foreach($perms as $perm)
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <input type="checkbox" id="perm_{{ $perm }}" name="permissions[]" value="{{ $perm }}" class="permission-checkbox" style="width: auto; cursor: pointer;">
+                                            <label for="perm_{{ $perm }}" style="font-weight: 600; font-size: 12.5px; text-transform: none; color: #334155; cursor: pointer; letter-spacing: normal; margin-bottom: 0;">
+                                                {{ ucwords(str_replace('_', ' ', $perm)) }}
+                                            </label>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
                 </div>
 
                 <!-- Submit and Cancel Actions -->
@@ -646,6 +671,7 @@
             form.querySelector('#modal-email').value = '';
             form.querySelector('#modal-password').value = '';
             form.querySelector('#modal-password-confirm').value = '';
+            form.querySelectorAll('.permission-checkbox').forEach(cb => cb.checked = false);
         }
 
         editButtons.forEach(function(btn) {
@@ -654,6 +680,7 @@
                 const name = btn.dataset.name || '';
                 const email = btn.dataset.email || '';
                 const updateUrl = btn.dataset.updateUrl;
+                const permissions = JSON.parse(btn.dataset.permissions || '[]');
 
                 // set form to update
                 form.action = updateUrl;
@@ -667,6 +694,11 @@
                 // clear password fields for security
                 form.querySelector('#modal-password').value = '';
                 form.querySelector('#modal-password-confirm').value = '';
+
+                // prefill permissions
+                form.querySelectorAll('.permission-checkbox').forEach(cb => {
+                    cb.checked = permissions.includes(cb.value);
+                });
 
                 openAdminModal();
             });

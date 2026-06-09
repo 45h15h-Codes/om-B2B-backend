@@ -80,11 +80,14 @@ class ShopifySyncService extends ShopifyService
                         // Process orders/create
                         $webhookController->processWebhookPayload('orders/create', $payload, $store->shop_domain);
                         
-                        // Process orders/paid if paid/completed
+                        // Process orders/paid and/or orders/fulfilled if paid/completed
                         $financialStatus = $payload['financial_status'] ?? '';
                         $fulfillmentStatus = $payload['fulfillment_status'] ?? '';
-                        if ($financialStatus === 'paid' || $fulfillmentStatus === 'fulfilled') {
+                        if ($financialStatus === 'paid') {
                             $webhookController->processWebhookPayload('orders/paid', $payload, $store->shop_domain);
+                        }
+                        if ($fulfillmentStatus === 'fulfilled') {
+                            $webhookController->processWebhookPayload('fulfillments/create', $payload, $store->shop_domain);
                         }
 
                         // Process orders/cancelled if cancelled

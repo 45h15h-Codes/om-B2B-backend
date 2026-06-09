@@ -96,6 +96,84 @@ class User extends Authenticatable
     {
         return $this->notifications()->whereNull('read_at');
     }
+
+    /**
+     * Get permissions associated with this user.
+     */
+    public function permissions()
+    {
+        return $this->hasMany(AdminPermission::class);
+    }
+
+    /**
+     * Internal helper to collect all unique config permissions.
+     */
+    protected function allPermissions(): array
+    {
+        return collect(config('admin_permissions'))
+            ->flatten()
+            ->unique()
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Clear and immediately rebuild the cached permissions list.
+     */
+    public function refreshPermissionsCache()
+    {
+        \Illuminate\Support\Facades\Cache::forget("user_permissions_{$this->id}");
+
+        if ($this->role === 'super_admin') {
+            return $this->allPermissions();
+        }
+
+        return \Illuminate\Support\Facades\Cache::rememberForever(
+            "user_permissions_{$this->id}",
+            function () {
+                return $this->permissions()->pluck('permission')->toArray();
+            }
+        );
+    }
+
+    /**
+     * Get user permissions from the cache (or query and save if not loaded).
+     */
+    public function getCachedPermissions(): array
+    {
+        if ($this->role === 'super_admin') {
+            return $this->allPermissions();
+        }
+
+        return \Illuminate\Support\Facades\Cache::rememberForever(
+            "user_permissions_{$this->id}",
+            function () {
+                return $this->permissions()->pluck('permission')->toArray();
+            }
+        );
+    }
+
+    /**
+     * Check if user is granted a specific permission.
+     */
+    public function hasPermission(string $permission): bool
+    {
+        return in_array($permission, $this->getCachedPermissions());
+    }
+
+    /**
+     * Check if user is granted at least one of the specified permissions.
+     */
+    public function hasAnyPermission(array $permissions): bool
+    {
+        $granted = $this->getCachedPermissions();
+        foreach ($permissions as $permission) {
+            if (in_array($permission, $granted)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 

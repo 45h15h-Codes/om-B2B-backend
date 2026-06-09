@@ -245,8 +245,22 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
             'https://store-b.myshopify.com/admin/api/2025-10/products/1002.json' => Http::response(['product' => ['status' => 'draft']], 200),
         ]);
 
-        $syncService = app(CrossStoreInventorySyncService::class);
-        $syncService->lockDiamondAcrossStores($diamond, $storeA->id, 'order_test_123');
+        // Create assignments first
+        \App\Models\DiamondStoreAssignment::create([
+            'diamond_id' => $diamond->id,
+            'shopify_store_id' => $storeA->id,
+            'assigned_by' => $user->id,
+            'is_published' => true,
+        ]);
+        \App\Models\DiamondStoreAssignment::create([
+            'diamond_id' => $diamond->id,
+            'shopify_store_id' => $storeB->id,
+            'assigned_by' => $user->id,
+            'is_published' => true,
+        ]);
+
+        $lockService = app(\App\Services\GlobalDiamondLockService::class);
+        $lockService->lockDiamond($diamond->id, $storeA->id, 'order_test_123');
 
         $diamond->refresh();
         $this->assertEquals('on_hold', $diamond->inventory_status);
@@ -259,8 +273,8 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
             'status' => 'hold',
         ]);
 
-        // Verify audit log entries are created
-        $this->assertDatabaseHas('shopify_inventory_audits', [
+        // Verify audit log entries are created: origin store A is skipped, non-origin store B is unpublished
+        $this->assertDatabaseMissing('shopify_inventory_audits', [
             'shopify_store_id' => $storeA->id,
             'diamond_id' => $diamond->id,
             'action' => 'lock_set_zero',
@@ -283,6 +297,7 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
         Queue::fake([
             ReleaseInventoryAcrossStoresJob::class,
             \App\Jobs\PublishProductToStoreJob::class,
+            \App\Jobs\PublishDiamondToShopifyJob::class,
         ]);
 
         $user = $this->getAdminUser('normal_admin');
@@ -312,6 +327,14 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
             'shopify_product_id' => '1003',
             'shopify_variant_id' => '2003',
             'sync_status' => 'synced',
+        ]);
+
+        // Create assignment
+        \App\Models\DiamondStoreAssignment::create([
+            'diamond_id' => $diamond->id,
+            'shopify_store_id' => $store->id,
+            'assigned_by' => $user->id,
+            'is_published' => true,
         ]);
 
         // Create hold reservation
@@ -402,6 +425,14 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
             'sync_status' => 'synced',
         ]);
 
+        // Create assignment
+        \App\Models\DiamondStoreAssignment::create([
+            'diamond_id' => $diamond->id,
+            'shopify_store_id' => $store->id,
+            'assigned_by' => $user->id,
+            'is_published' => true,
+        ]);
+
         // Shopify currently shows quantity = 1 (mismatch)
         Http::fake([
             'https://om-gems.myshopify.com/admin/api/2025-10/locations.json' => Http::response(['locations' => [['id' => 99]]], 200),
@@ -422,11 +453,11 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
             ->expectsOutput("Fixing discrepancy for DIA0004...")
             ->assertExitCode(0);
 
-        // Verify audit log shows set_zero corrective action
+        // Verify audit log shows lock_unpublish corrective action
         $this->assertDatabaseHas('shopify_inventory_audits', [
             'shopify_store_id' => $store->id,
             'diamond_id' => $diamond->id,
-            'action' => 'lock_set_zero',
+            'action' => 'lock_unpublish',
             'new_quantity' => 0,
         ]);
     }
@@ -605,16 +636,11 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
     }
 
     /**
-     * Test orders/paid webhook updates inventory to sold and triggers notifications.
+     * Test orders/paid webhook keeps the diamond on_hold.
      */
-    public function test_webhook_order_paid_sets_sold_and_records_state_change()
+    public function test_webhook_order_paid_keeps_on_hold()
     {
-        Queue::fake([
-            \App\Jobs\DeleteProductFromStoreJob::class,
-        ]);
-
         $user = $this->getAdminUser('normal_admin');
-        $superAdmin = $this->getAdminUser('super_admin');
         
         $store = ShopifyStore::create([
             'user_id' => $user->id,
@@ -643,6 +669,14 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
             'sync_status' => 'synced',
         ]);
 
+        // Create assignment
+        \App\Models\DiamondStoreAssignment::create([
+            'diamond_id' => $diamond->id,
+            'shopify_store_id' => $store->id,
+            'assigned_by' => $user->id,
+            'is_published' => true,
+        ]);
+
         // Create active hold reservation
         ShopifyInventoryReservation::create([
             'product_type' => 'diamond',
@@ -650,6 +684,17 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
             'shopify_store_id' => $store->id,
             'shopify_order_id' => 'order_paid_777',
             'status' => 'hold',
+        ]);
+
+        // Create local order first
+        \App\Models\Order::create([
+            'uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'shopify_store_id' => $store->id,
+            'shopify_order_id' => 'order_paid_777',
+            'shopify_order_number' => 'OM-1007',
+            'items' => [],
+            'status' => 'paid',
+            'created_by' => $user->id,
         ]);
 
         $payload = [
@@ -679,6 +724,111 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
 
         $response->assertStatus(202);
 
+        // Verify status remains on_hold in DB
+        $diamond->refresh();
+        $this->assertEquals('on_hold', $diamond->inventory_status);
+
+        // Verify reservation remains hold
+        $this->assertDatabaseHas('shopify_inventory_reservations', [
+            'product_id' => $diamond->id,
+            'shopify_order_id' => 'order_paid_777',
+            'status' => 'hold',
+        ]);
+    }
+
+    /**
+     * Test fulfillments/create webhook updates inventory to sold and unpublishes product.
+     */
+    public function test_webhook_fulfillment_create_sets_sold_and_drafts_products()
+    {
+        Queue::fake([
+            \App\Jobs\DeleteProductFromStoreJob::class,
+        ]);
+
+        $user = $this->getAdminUser('normal_admin');
+        
+        $store = ShopifyStore::create([
+            'user_id' => $user->id,
+            'store_name' => 'OM Gems',
+            'shop_domain' => 'om-gems.myshopify.com',
+            'access_token' => 'token1',
+        ]);
+
+        $diamond = Diamond::create([
+            'stock_no' => 'DIA_PAID_001',
+            'asking_price' => 7000,
+            'shape' => 'Round',
+            'size' => 1.8,
+            'user_id' => $user->id,
+            'created_by' => 'Normal Admin',
+            'status' => 'Approved',
+            'inventory_status' => 'on_hold',
+        ]);
+
+        $mapping = ShopifyProduct::create([
+            'product_type' => 'diamond',
+            'product_id' => $diamond->id,
+            'shopify_store_id' => $store->id,
+            'shopify_product_id' => '1007',
+            'shopify_variant_id' => '2007',
+            'sync_status' => 'synced',
+        ]);
+
+        // Create assignment
+        \App\Models\DiamondStoreAssignment::create([
+            'diamond_id' => $diamond->id,
+            'shopify_store_id' => $store->id,
+            'assigned_by' => $user->id,
+            'is_published' => true,
+        ]);
+
+        // Create active hold reservation
+        ShopifyInventoryReservation::create([
+            'product_type' => 'diamond',
+            'product_id' => $diamond->id,
+            'shopify_store_id' => $store->id,
+            'shopify_order_id' => 'order_paid_777',
+            'status' => 'hold',
+        ]);
+
+        // Create local order first
+        $order = \App\Models\Order::create([
+            'uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'shopify_store_id' => $store->id,
+            'shopify_order_id' => 'order_paid_777',
+            'shopify_order_number' => 'OM-1007',
+            'items' => [],
+            'status' => 'paid',
+            'created_by' => $user->id,
+        ]);
+
+        $payload = [
+            'id' => 'fulfillment_999',
+            'order_id' => 'order_paid_777',
+            'line_items' => [
+                [
+                    'product_id' => 1007,
+                    'variant_id' => 2007,
+                    'quantity' => 1,
+                    'sku' => 'DIA_PAID_001',
+                ]
+            ]
+        ];
+
+        // Webhook Fulfillment
+        $response = $this->json(
+            'POST',
+            '/api/shopify/webhooks',
+            $payload,
+            [
+                'X-Shopify-Topic' => 'fulfillments/create',
+                'X-Shopify-Shop-Domain' => 'om-gems.myshopify.com',
+                'X-Shopify-Webhook-Id' => 'webhook_unique_fulfillment_999',
+            ]
+        );
+
+        $response->assertStatus(202);
+
         // Verify status changed to sold in DB
         $diamond->refresh();
         $this->assertEquals('sold', $diamond->inventory_status);
@@ -690,19 +840,10 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
             'status' => 'completed',
         ]);
 
-        // Verify audit log exists
-        $this->assertDatabaseHas('shopify_inventory_audits', [
-            'diamond_id' => $diamond->id,
-            'shopify_store_id' => $store->id,
-            'action' => 'sold_set_zero',
-        ]);
-
-        // Verify history log exists
-        $this->assertDatabaseHas('inventory_histories', [
-            'product_id' => $diamond->id,
-            'product_type' => 'diamond',
-            'new_value' => 'sold',
-        ]);
+        // Verify Delete/Draft job was dispatched
+        Queue::assertPushed(\App\Jobs\DeleteProductFromStoreJob::class, function ($job) use ($mapping) {
+            return $job->shopifyProductId === $mapping->shopify_product_id && $job->storeId === $mapping->shopify_store_id;
+        });
     }
 
     /**
@@ -732,5 +873,106 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
         $this->assertTrue($notifications->contains(function ($n) {
             return $n->data['title'] === 'System Alert - Queue backlog detected';
         }));
+    }
+
+    /**
+     * Test lock, release, and mark sold propagate to matching duplicate physical diamonds.
+     */
+    public function test_duplicate_physical_diamond_status_propagation()
+    {
+        Queue::fake([
+            LockInventoryAcrossStoresJob::class,
+            ReleaseInventoryAcrossStoresJob::class,
+            \App\Jobs\DeleteProductFromStoreJob::class,
+            \App\Jobs\PublishDiamondToShopifyJob::class
+        ]);
+
+        $adminA = $this->getAdminUser('normal_admin');
+        $adminB = $this->getAdminUser('normal_admin');
+
+        $storeA = ShopifyStore::create(['user_id' => $adminA->id, 'store_name' => 'Store A', 'shop_domain' => 'store-a.myshopify.com', 'access_token' => 'tokena']);
+        $storeB = ShopifyStore::create(['user_id' => $adminB->id, 'store_name' => 'Store B', 'shop_domain' => 'store-b.myshopify.com', 'access_token' => 'tokenb']);
+
+        // Create two matching diamonds representing the same physical diamond
+        $diamondA = Diamond::create([
+            'stock_no' => 'DIA1001',
+            'asking_price' => 4500,
+            'shape' => 'Round',
+            'size' => 0.9,
+            'color' => 'D',
+            'clarity' => 'IF',
+            'user_id' => $adminA->id,
+            'created_by' => 'Normal Admin',
+            'status' => 'Approved',
+            'inventory_status' => 'available',
+        ]);
+
+        $diamondB = Diamond::create([
+            'stock_no' => 'DIA3001',
+            'asking_price' => 4500,
+            'shape' => 'Round',
+            'size' => 0.9,
+            'color' => 'D',
+            'clarity' => 'IF',
+            'user_id' => $adminB->id,
+            'created_by' => 'Normal Admin',
+            'status' => 'Approved',
+            'inventory_status' => 'available',
+        ]);
+
+        ShopifyProduct::create([
+            'product_type' => 'diamond',
+            'product_id' => $diamondA->id,
+            'shopify_store_id' => $storeA->id,
+            'shopify_product_id' => '111',
+            'shopify_variant_id' => 'v111',
+            'sync_status' => 'synced',
+        ]);
+
+        ShopifyProduct::create([
+            'product_type' => 'diamond',
+            'product_id' => $diamondB->id,
+            'shopify_store_id' => $storeB->id,
+            'shopify_product_id' => '222',
+            'shopify_variant_id' => 'v222',
+            'sync_status' => 'synced',
+        ]);
+
+        \App\Models\DiamondStoreAssignment::create([
+            'diamond_id' => $diamondA->id,
+            'shopify_store_id' => $storeA->id,
+            'assigned_by' => $adminA->id,
+            'is_published' => true,
+        ]);
+
+        \App\Models\DiamondStoreAssignment::create([
+            'diamond_id' => $diamondB->id,
+            'shopify_store_id' => $storeB->id,
+            'assigned_by' => $adminB->id,
+            'is_published' => true,
+        ]);
+
+        $lockService = app(\App\Services\GlobalDiamondLockService::class);
+
+        // 1. Lock diamond A
+        $lockService->lockDiamond($diamondA->id, $storeA->id, 'shopify_order_123');
+
+        // Assert both A and B are locked locally in database
+        $this->assertEquals('on_hold', $diamondA->fresh()->inventory_status);
+        $this->assertEquals('on_hold', $diamondB->fresh()->inventory_status);
+
+        // 2. Release hold
+        $lockService->releaseDiamond($diamondA->id, 'Test cancel');
+
+        // Assert both A and B are released
+        $this->assertEquals('available', $diamondA->fresh()->inventory_status);
+        $this->assertEquals('available', $diamondB->fresh()->inventory_status);
+
+        // 3. Mark sold
+        $lockService->markSold($diamondA->id, $storeA->id, 'shopify_order_123');
+
+        // Assert both A and B are sold
+        $this->assertEquals('sold', $diamondA->fresh()->inventory_status);
+        $this->assertEquals('sold', $diamondB->fresh()->inventory_status);
     }
 }

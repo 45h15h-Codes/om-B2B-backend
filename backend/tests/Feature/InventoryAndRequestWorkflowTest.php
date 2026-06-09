@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use Tests\TestCase;
 use App\Models\User;
+use App\Models\AdminPermission;
 use App\Models\Diamond;
 use App\Models\Jewelery;
 use App\Models\ShopifyStore;
@@ -125,6 +126,12 @@ class InventoryAndRequestWorkflowTest extends TestCase
             'inventory_status' => 'available',
         ]);
 
+        AdminPermission::create([
+            'user_id' => $admin->id,
+            'permission' => 'hold_inventory',
+        ]);
+        $admin->refreshPermissionsCache();
+
         $this->actingAs($admin);
         session(['admin_role' => 'normal_admin']);
 
@@ -143,6 +150,8 @@ class InventoryAndRequestWorkflowTest extends TestCase
      */
     public function test_shopify_mock_integration()
     {
+        Queue::fake([\App\Jobs\PublishDiamondToShopifyJob::class]);
+
         $admin = $this->getAdminUser('normal_admin');
         
         $store = ShopifyStore::create([
@@ -170,6 +179,13 @@ class InventoryAndRequestWorkflowTest extends TestCase
             'shopify_product_id' => 'prod_99',
             'shopify_variant_id' => 'var_99',
             'sync_status' => 'synced',
+        ]);
+
+        \App\Models\DiamondStoreAssignment::create([
+            'diamond_id' => $diamond->id,
+            'shopify_store_id' => $store->id,
+            'assigned_by' => $admin->id,
+            'is_published' => true,
         ]);
 
         // Mock Shopify location, variant, and set inventory API calls
@@ -245,6 +261,13 @@ class InventoryAndRequestWorkflowTest extends TestCase
             'shopify_product_id' => 'prod_99',
             'shopify_variant_id' => 'var_99',
             'sync_status' => 'synced',
+        ]);
+
+        \App\Models\DiamondStoreAssignment::create([
+            'diamond_id' => $diamond->id,
+            'shopify_store_id' => $store->id,
+            'assigned_by' => $admin->id,
+            'is_published' => true,
         ]);
 
         $request = InventoryRequest::create([

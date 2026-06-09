@@ -25,16 +25,25 @@ class DiamondStoreAssignment extends Model
         'assigned_by' => 'integer',
     ];
 
+    /**
+     * Get the associated Diamond.
+     */
     public function diamond()
     {
         return $this->belongsTo(Diamond::class, 'diamond_id');
     }
 
+    /**
+     * Get the associated Shopify Store.
+     */
     public function shopifyStore()
     {
         return $this->belongsTo(ShopifyStore::class, 'shopify_store_id');
     }
 
+    /**
+     * Get the user who assigned the store.
+     */
     public function assigner()
     {
         return $this->belongsTo(User::class, 'assigned_by');

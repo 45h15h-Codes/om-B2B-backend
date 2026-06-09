@@ -81,6 +81,14 @@ class Diamond extends Model
         'hold_by',
         'hold_reason',
         'hold_at',
+        'hold_shopify_store_id',
+        'sold_store_id',
+        'sold_at',
+        'sold_by_store_id',
+        'sold_by_store_name',
+        'sold_by_user_id',
+        'sold_order_number',
+        'sold_order_date',
         'specifications',
     ];
 
@@ -153,7 +161,13 @@ class Diamond extends Model
         'user_id' => 'integer',
         'assigned_admin_id' => 'integer',
         'hold_by' => 'integer',
+        'hold_shopify_store_id' => 'integer',
+        'sold_store_id' => 'integer',
+        'sold_by_store_id' => 'integer',
+        'sold_by_user_id' => 'integer',
         'hold_at' => 'datetime',
+        'sold_at' => 'datetime',
+        'sold_order_date' => 'datetime',
     ];
 
     /**
@@ -255,6 +269,26 @@ class Diamond extends Model
     public function assignedAdmin()
     {
         return $this->belongsTo(User::class, 'assigned_admin_id');
+    }
+
+    public function holdShopifyStore()
+    {
+        return $this->belongsTo(ShopifyStore::class, 'hold_shopify_store_id');
+    }
+
+    public function soldStore()
+    {
+        return $this->belongsTo(ShopifyStore::class, 'sold_store_id');
+    }
+
+    public function soldByStore()
+    {
+        return $this->belongsTo(ShopifyStore::class, 'sold_by_store_id');
+    }
+
+    public function soldByUser()
+    {
+        return $this->belongsTo(User::class, 'sold_by_user_id');
     }
 
     public function storeAssignments()

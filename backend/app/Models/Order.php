@@ -62,6 +62,7 @@ class Order extends Model
         'error_message',
         'created_by',
         'approved_by',
+        'diamond_id',
     ];
 
     protected $casts = [
@@ -74,6 +75,14 @@ class Order extends Model
         'shopify_payload' => 'array',
         'shopify_response' => 'array',
     ];
+
+    /**
+     * Get the associated Diamond.
+     */
+    public function diamond()
+    {
+        return $this->belongsTo(Diamond::class, 'diamond_id');
+    }
 
     /**
      * Get the associated Shopify Store.

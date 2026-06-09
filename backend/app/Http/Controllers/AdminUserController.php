@@ -19,7 +19,7 @@ class AdminUserController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $admins = User::where('role', 'normal_admin')->latest()->get();
+        $admins = User::with('permissions')->where('role', 'normal_admin')->latest()->get();
         return view('admins.index', compact('admins'));
     }
 
@@ -46,18 +46,32 @@ class AdminUserController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
+        $validPermissions = collect(config('admin_permissions'))->flatten()->unique()->values()->toArray();
+
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['string', \Illuminate\Validation\Rule::in($validPermissions)],
         ]);
 
-        User::create([
+        $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'role' => 'normal_admin',
         ]);
+
+        if ($user->role !== 'super_admin' && $request->has('permissions')) {
+            foreach ($request->input('permissions', []) as $perm) {
+                \App\Models\AdminPermission::create([
+                    'user_id' => $user->id,
+                    'permission' => $perm,
+                ]);
+            }
+        }
+        $user->refreshPermissionsCache();
 
         return redirect()->route('admins.index')->with('success', 'Normal admin created successfully!');
     }
@@ -84,6 +98,7 @@ class AdminUserController extends Controller
 
         // Update the active session role to normal admin
         session(['admin_role' => 'normal_admin']);
+        $admin->refreshPermissionsCache();
 
         return redirect()->route('home')->with('success', "Logged in as Normal Admin: {$admin->name}");
     }
@@ -112,6 +127,7 @@ class AdminUserController extends Controller
 
         // Restore active session role to super admin
         session(['admin_role' => 'super_admin']);
+        $superAdmin->refreshPermissionsCache();
 
         return redirect()->route('home')->with('success', 'Returned to Super Admin Panel.');
     }
@@ -147,10 +163,14 @@ class AdminUserController extends Controller
             return back()->with('error', 'You can only edit normal admin users.');
         }
 
+        $validPermissions = collect(config('admin_permissions'))->flatten()->unique()->values()->toArray();
+
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $admin->id],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['string', \Illuminate\Validation\Rule::in($validPermissions)],
         ]);
 
         $admin->name = $request->name;
@@ -159,6 +179,19 @@ class AdminUserController extends Controller
             $admin->password = Hash::make($request->password);
         }
         $admin->save();
+
+        if ($admin->role !== 'super_admin') {
+            \App\Models\AdminPermission::where('user_id', $admin->id)->delete();
+            if ($request->has('permissions')) {
+                foreach ($request->input('permissions', []) as $perm) {
+                    \App\Models\AdminPermission::create([
+                        'user_id' => $admin->id,
+                        'permission' => $perm,
+                    ]);
+                }
+            }
+        }
+        $admin->refreshPermissionsCache();
 
         return redirect()->route('admins.index')->with('success', 'Normal admin updated successfully!');
     }

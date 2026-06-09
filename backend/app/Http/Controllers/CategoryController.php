@@ -278,7 +278,7 @@ class CategoryController extends Controller
         }
 
         $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
-        $file->move(public_path($directory), $fileName);
+        \Illuminate\Support\Facades\Storage::disk('public_uploads')->putFileAs($directory, $file, $fileName);
         return $directory . '/' . $fileName;
     }
 

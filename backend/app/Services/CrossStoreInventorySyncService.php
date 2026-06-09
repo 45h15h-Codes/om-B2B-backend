@@ -29,9 +29,11 @@ class CrossStoreInventorySyncService
     public function lockInventoryAcrossStores(string $productType, int $productId, ?int $originStoreId = null, ?string $shopifyOrderId = null)
     {
         $product = null;
-        if ($productType === 'diamond') {
+        if ($productType === 'diamond' || $productType === \App\Models\Diamond::class) {
+            $productType = 'diamond';
             $product = \App\Models\Diamond::find($productId);
-        } elseif ($productType === 'jewelry') {
+        } elseif ($productType === 'jewelry' || $productType === \App\Models\Jewelery::class) {
+            $productType = 'jewelry';
             $product = \App\Models\Jewelery::find($productId);
         }
 
@@ -69,16 +71,38 @@ class CrossStoreInventorySyncService
 
         Log::info("CrossStoreInventorySyncService: Locking {$productType} " . ($product->sku ?? $product->stock_no) . " across all stores.");
 
-        $inventoryService = app(\App\Services\InventoryService::class);
-        $inventoryService->updateInventoryStatus($product, 'on_hold', $originStoreId, $shopifyOrderId);
+        // For diamonds, mappings are driven by assignments table if assignments exist
+        if ($productType === 'diamond') {
+            $hasAssignments = \App\Models\DiamondStoreAssignment::where('diamond_id', $productId)->exists();
+            if ($hasAssignments) {
+                $assignedStoreIds = \App\Models\DiamondStoreAssignment::where('diamond_id', $productId)
+                    ->pluck('shopify_store_id')
+                    ->toArray();
 
-        $mappings = ShopifyProduct::where('product_type', $productType)
-            ->where('product_id', $productId)
-            ->get();
+                $mappings = ShopifyProduct::where('product_type', $productType)
+                    ->where('product_id', $productId)
+                    ->whereIn('shopify_store_id', $assignedStoreIds)
+                    ->get();
+            } else {
+                $mappings = ShopifyProduct::where('product_type', $productType)
+                    ->where('product_id', $productId)
+                    ->get();
+            }
+        } else {
+            $mappings = ShopifyProduct::where('product_type', $productType)
+                ->where('product_id', $productId)
+                ->get();
+        }
 
         foreach ($mappings as $mapping) {
             $store = $mapping->shopifyStore;
             if (!$store) {
+                continue;
+            }
+
+            // Skip the origin store where checkout happened
+            if ($originStoreId && (int)$store->id === (int)$originStoreId) {
+                Log::info("Skipping lock on origin store ID: {$originStoreId} for product ID: {$productId}");
                 continue;
             }
 
@@ -142,29 +166,10 @@ class CrossStoreInventorySyncService
             ->first();
         $previousQuantity = $localInv ? $localInv->available : null;
 
-        if ($inventoryManagement !== 'shopify' || !$inventoryItemId) {
-            // Inventory tracking is unavailable - Archive/Unpublish product
-            Log::info("Inventory tracking unavailable for variant {$variantId}. Unpublishing product {$productId}.");
-            $success = $this->shopify->unpublishProduct($productId);
-            if (!$success) {
-                throw new \Exception("Failed to unpublish product {$productId} on Shopify.");
-            }
+        $apiResponses = [];
 
-            $mapping->update(['sync_status' => 'synced']);
-
-            ShopifyInventoryAudit::create([
-                'shopify_store_id' => $store->id,
-                'diamond_id' => ($product instanceof \App\Models\Diamond) ? $product->id : null,
-                'jewelry_id' => ($product instanceof \App\Models\Jewelery) ? $product->id : null,
-                'stock_no' => $product->sku ?? $product->stock_no,
-                'action' => 'lock_unpublish',
-                'shopify_product_id' => $productId,
-                'shopify_variant_id' => $variantId,
-                'previous_quantity' => $previousQuantity,
-                'new_quantity' => 0,
-                'api_response' => ['status' => 'unpublished'],
-            ]);
-        } else {
+        // 1. If inventory tracking is enabled, set quantity to 0
+        if ($inventoryManagement === 'shopify' && $inventoryItemId) {
             // Fetch all locations where this inventory item is stocked
             $levelsResponse = $this->shopify->getClient($store->id)->get("https://{$store->shop_domain}/admin/api/" . config('shopify.api_version') . "/inventory_levels.json", [
                 'inventory_item_ids' => $inventoryItemId
@@ -174,8 +179,6 @@ class CrossStoreInventorySyncService
             if ($levelsResponse->successful()) {
                 $levels = $levelsResponse->json('inventory_levels') ?? [];
             }
-
-            $apiResponses = [];
 
             if (!empty($levels)) {
                 foreach ($levels as $level) {
@@ -203,30 +206,42 @@ class CrossStoreInventorySyncService
                     'available' => 0,
                 ];
                 $res = $this->shopify->getClient($store->id)->post("https://{$store->shop_domain}/admin/api/" . config('shopify.api_version') . "/inventory_levels/set.json", $payload);
-                if (!$res->successful()) {
-                    throw new \Exception("Failed to set inventory on Shopify fallback: " . $res->body());
+                if ($res->successful()) {
+                    $apiResponses[] = $res->json();
+                } else {
+                    Log::error("Failed fallback set inventory: " . $res->body());
                 }
-                $apiResponses[] = $res->json();
             }
 
-            // Update local shopify inventory table as well
             if ($localInv) {
                 $localInv->update(['available' => 0]);
             }
-
-            ShopifyInventoryAudit::create([
-                'shopify_store_id' => $store->id,
-                'diamond_id' => ($product instanceof \App\Models\Diamond) ? $product->id : null,
-                'jewelry_id' => ($product instanceof \App\Models\Jewelery) ? $product->id : null,
-                'stock_no' => $product->sku ?? $product->stock_no,
-                'action' => 'lock_set_zero',
-                'shopify_product_id' => $productId,
-                'shopify_variant_id' => $variantId,
-                'previous_quantity' => $previousQuantity,
-                'new_quantity' => 0,
-                'api_response' => $apiResponses,
-            ]);
         }
+
+        // 2. Always unpublish/draft product to move status to draft on Shopify
+        Log::info("Unpublishing/drafting product {$productId} on store {$store->shop_domain}.");
+        $success = $this->shopify->unpublishProduct($productId);
+        if (!$success) {
+            throw new \Exception("Failed to unpublish product {$productId} on Shopify.");
+        }
+
+        $mapping->update([
+            'shopify_status' => 'draft',
+            'sync_status' => 'synced',
+        ]);
+
+        ShopifyInventoryAudit::create([
+            'shopify_store_id' => $store->id,
+            'diamond_id' => ($product instanceof \App\Models\Diamond) ? $product->id : null,
+            'jewelry_id' => ($product instanceof \App\Models\Jewelery) ? $product->id : null,
+            'stock_no' => $product->sku ?? $product->stock_no,
+            'action' => 'lock_unpublish',
+            'shopify_product_id' => $productId,
+            'shopify_variant_id' => $variantId,
+            'previous_quantity' => $previousQuantity,
+            'new_quantity' => 0,
+            'api_response' => array_merge($apiResponses, ['status' => 'drafted']),
+        ]);
     }
 
     /**
@@ -235,9 +250,11 @@ class CrossStoreInventorySyncService
     public function releaseInventoryAcrossStores(string $productType, int $productId)
     {
         $product = null;
-        if ($productType === 'diamond') {
+        if ($productType === 'diamond' || $productType === \App\Models\Diamond::class) {
+            $productType = 'diamond';
             $product = \App\Models\Diamond::find($productId);
-        } elseif ($productType === 'jewelry') {
+        } elseif ($productType === 'jewelry' || $productType === \App\Models\Jewelery::class) {
+            $productType = 'jewelry';
             $product = \App\Models\Jewelery::find($productId);
         }
 
@@ -275,12 +292,29 @@ class CrossStoreInventorySyncService
 
         Log::info("CrossStoreInventorySyncService: Releasing {$productType} " . ($product->sku ?? $product->stock_no) . " across all stores.");
 
-        $inventoryService = app(\App\Services\InventoryService::class);
-        $inventoryService->updateInventoryStatus($product, 'available');
+        // For diamonds, assignments drive which stores get released if assignments exist
+        if ($productType === 'diamond') {
+            $hasAssignments = \App\Models\DiamondStoreAssignment::where('diamond_id', $productId)->exists();
+            if ($hasAssignments) {
+                $assignments = \App\Models\DiamondStoreAssignment::where('diamond_id', $productId)->get()->keyBy('shopify_store_id');
+                $storeIds = $assignments->keys()->toArray();
 
-        $mappings = ShopifyProduct::where('product_type', $productType)
-            ->where('product_id', $productId)
-            ->get();
+                $mappings = ShopifyProduct::where('product_type', $productType)
+                    ->where('product_id', $productId)
+                    ->whereIn('shopify_store_id', $storeIds)
+                    ->get();
+            } else {
+                $mappings = ShopifyProduct::where('product_type', $productType)
+                    ->where('product_id', $productId)
+                    ->get();
+                $assignments = collect();
+            }
+        } else {
+            $mappings = ShopifyProduct::where('product_type', $productType)
+                ->where('product_id', $productId)
+                ->get();
+            $assignments = collect();
+        }
 
         foreach ($mappings as $mapping) {
             $store = $mapping->shopifyStore;
@@ -288,8 +322,17 @@ class CrossStoreInventorySyncService
                 continue;
             }
 
+            // Check if this store assignment is published
+            $assignment = $assignments->get($store->id);
+            $isPublished = $assignment ? $assignment->is_published : true;
+
             try {
-                $this->releaseSingleMapping($mapping, $store, $product);
+                if ($isPublished) {
+                    $this->releaseSingleMapping($mapping, $store, $product);
+                } else {
+                    // If it is unpublished/not assignment target, ensure locked state
+                    $this->lockSingleMapping($mapping, $store, $product);
+                }
             } catch (\Throwable $e) {
                 Log::error("Failed to release mapping ID {$mapping->id} for store {$store->shop_domain}: " . $e->getMessage());
                 ShopifyInventoryAudit::create([
@@ -354,6 +397,11 @@ class CrossStoreInventorySyncService
         if (!$publishSuccess) {
             throw new \Exception("Failed to publish product {$productId} on Shopify.");
         }
+
+        $mapping->update([
+            'shopify_status' => 'active',
+            'sync_status' => 'synced',
+        ]);
 
         if ($inventoryManagement === 'shopify' && $inventoryItemId) {
             // Fetch all locations where this inventory item is stocked
@@ -440,9 +488,11 @@ class CrossStoreInventorySyncService
     public function syncInventoryAcrossStores(string $productType, int $productId)
     {
         $product = null;
-        if ($productType === 'diamond') {
+        if ($productType === 'diamond' || $productType === \App\Models\Diamond::class) {
+            $productType = 'diamond';
             $product = \App\Models\Diamond::find($productId);
-        } elseif ($productType === 'jewelry') {
+        } elseif ($productType === 'jewelry' || $productType === \App\Models\Jewelery::class) {
+            $productType = 'jewelry';
             $product = \App\Models\Jewelery::find($productId);
         }
 

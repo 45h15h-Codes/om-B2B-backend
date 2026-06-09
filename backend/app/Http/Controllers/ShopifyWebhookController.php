@@ -273,6 +273,7 @@ class ShopifyWebhookController extends Controller
 
             $shopifyOrderId = (string) ($payload['id'] ?? '');
 
+            // 1. Create or retrieve the local order record first
             $order = $this->findOrderFromWebhookPayload($payload, $topic);
             if (!$order) {
                 Log::info("Webhook: Auto-creating local Order from storefront purchase.");
@@ -378,16 +379,34 @@ class ShopifyWebhookController extends Controller
                 }
 
                 if ($product && $productType) {
-                    Log::info("Webhook orders/create: Transitioning {$productType} ID {$product->id} (SKU: {$sku}) to hold via InventoryService.");
-                    
-                    $inventoryService = app(\App\Services\InventoryService::class);
-                    try {
-                        $inventoryService->updateInventoryStatus($product, 'on_hold', $store->id, $shopifyOrderId, $order->id ?? null);
-                    } catch (\Throwable $e) {
-                        Log::warning("Inventory status update failed or already handled for {$productType} ID {$product->id}: " . $e->getMessage());
-                    }
+                    if ($productType === 'diamond') {
+                        // Associate diamond with order first
+                        $order->update(['diamond_id' => $product->id]);
 
-                    \App\Jobs\LockInventoryAcrossStoresJob::dispatch($productType, $product->id, $store->id, $shopifyOrderId);
+                        Log::info("Webhook orders/create: Attempting lock on diamond ID {$product->id} via GlobalDiamondLockService.");
+                        $lockService = app(\App\Services\GlobalDiamondLockService::class);
+                        $lockSuccess = $lockService->lockDiamond($product->id, $store->id, $shopifyOrderId, $order->id);
+
+                        if (!$lockSuccess) {
+                            Log::warning("Webhook orders/create lock failed: Diamond already locked or sold.");
+                            $order->update(['status' => 'inventory_unavailable']);
+                            $order->logs()->create([
+                                'action' => 'Lock Failed',
+                                'message' => "Diamond already locked or sold. Order could not reserve inventory.",
+                                'payload' => $payload,
+                            ]);
+                        }
+                    } else {
+                        // Fallback for jewelry
+                        Log::info("Webhook orders/create: Transitioning jewelry ID {$product->id} (SKU: {$sku}) to hold via InventoryService.");
+                        $inventoryService = app(\App\Services\InventoryService::class);
+                        try {
+                            $inventoryService->updateInventoryStatus($product, 'on_hold', $store->id, $shopifyOrderId, $order->id ?? null);
+                        } catch (\Throwable $e) {
+                            Log::warning("Inventory status update failed or already handled for jewelry ID {$product->id}: " . $e->getMessage());
+                        }
+                        \App\Jobs\LockInventoryAcrossStoresJob::dispatch($productType, $product->id, $store->id, $shopifyOrderId);
+                    }
                 }
             }
         });
@@ -408,6 +427,12 @@ class ShopifyWebhookController extends Controller
 
             $order = $this->findOrderFromWebhookPayload($payload, $topic);
             if ($order) {
+                $previousStatus = $order->status;
+                if ($previousStatus === 'cancelled') {
+                    Log::info("Shopify Webhook: Order ID {$order->id} is already cancelled. Skipping.");
+                    return;
+                }
+
                 $cancelledAt = $payload['cancelled_at'] ?? null;
                 $order->update([
                     'status' => 'cancelled',
@@ -426,87 +451,57 @@ class ShopifyWebhookController extends Controller
 
             $reservations = \App\Models\ShopifyInventoryReservation::with('product')
                 ->where('shopify_order_id', $shopifyOrderId)
-                ->whereIn('status', ['hold', 'completed'])
                 ->get();
 
+            $diamondReleased = false;
             $inventoryService = app(\App\Services\InventoryService::class);
 
             foreach ($reservations as $reservation) {
                 $product = $reservation->product;
                 $productType = $reservation->product_type;
                 if ($product && $productType) {
-                    Log::info("Webhook orders/cancelled: Releasing {$productType} ID {$product->id} (SKU/Stock: " . ($product->sku ?? $product->stock_no) . ") via InventoryService.");
-                    try {
-                        $inventoryService->updateInventoryStatus($product, 'available', $store->id, $shopifyOrderId, $order->id ?? null);
-                    } catch (\Throwable $e) {
-                        Log::warning("Inventory status update failed or already handled for {$productType} ID {$product->id}: " . $e->getMessage());
+                    if ($productType === \App\Models\Diamond::class || $productType === 'diamond') {
+                        $lockService = app(\App\Services\GlobalDiamondLockService::class);
+                        $lockService->releaseDiamond($product->id, "Shopify order cancelled (Order ID: {$shopifyOrderId}).");
+                        $diamondReleased = true;
+                    } else {
+                        // Fallback for jewelry
+                        Log::info("Webhook orders/cancelled: Releasing jewelry ID {$product->id} via InventoryService.");
+                        try {
+                            $inventoryService->updateInventoryStatus($product, 'available', $store->id, $shopifyOrderId, $order->id ?? null);
+                        } catch (\Throwable $e) {
+                            Log::warning("Inventory status update failed or already handled for jewelry ID {$product->id}: " . $e->getMessage());
+                        }
+                        \App\Jobs\ReleaseInventoryAcrossStoresJob::dispatch($productType, $product->id);
                     }
-                    \App\Jobs\ReleaseInventoryAcrossStoresJob::dispatch($productType, $product->id);
                 }
             }
 
             // Fallback for line items if no reservations exist
             if ($reservations->isEmpty()) {
                 $lineItems = $payload['line_items'] ?? [];
-                $variantIds = collect($lineItems)->pluck('variant_id')->filter()->map(fn($id) => (string)$id)->toArray();
-                $productIds = collect($lineItems)->pluck('product_id')->filter()->map(fn($id) => (string)$id)->toArray();
-                $skus = collect($lineItems)->pluck('sku')->filter()->toArray();
-
-                $shopifyProducts = \App\Models\ShopifyProduct::with('product')
-                    ->where(function($query) use ($variantIds, $productIds) {
-                        if (!empty($variantIds)) {
-                            $query->whereIn('shopify_variant_id', $variantIds);
-                        }
-                        if (!empty($productIds)) {
-                            $query->orWhereIn('shopify_product_id', $productIds);
-                        }
-                    })->get();
-
-                $shopifyProductsByVariant = $shopifyProducts->whereNotNull('shopify_variant_id')->keyBy('shopify_variant_id');
-                $shopifyProductsByProduct = $shopifyProducts->whereNotNull('shopify_product_id')->keyBy('shopify_product_id');
-
-                $diamondsBySku = collect();
-                $jewelryBySku = collect();
-                if (!empty($skus)) {
-                    $diamondsBySku = \App\Models\Diamond::whereIn('stock_no', $skus)->get()->keyBy('stock_no');
-                    $jewelryBySku = \App\Models\Jewelery::whereIn('sku', $skus)->get()->keyBy('sku');
-                }
-
                 foreach ($lineItems as $lineItem) {
                     $variantId = $lineItem['variant_id'] ?? null;
-                    $productId = $lineItem['product_id'] ?? null;
-                    $sku = $lineItem['sku'] ?? null;
-
-                    $shopifyProduct = null;
-                    if ($variantId && isset($shopifyProductsByVariant[(string)$variantId])) {
-                        $shopifyProduct = $shopifyProductsByVariant[(string)$variantId];
-                    } elseif ($productId && isset($shopifyProductsByProduct[(string)$productId])) {
-                        $shopifyProduct = $shopifyProductsByProduct[(string)$productId];
-                    }
-
-                    $product = null;
-                    $productType = null;
-                    if ($shopifyProduct) {
-                        $product = $shopifyProduct->product;
-                        $productType = $shopifyProduct->product_type;
-                    } elseif ($sku) {
-                        if (isset($diamondsBySku[$sku])) {
-                            $product = $diamondsBySku[$sku];
-                            $productType = 'diamond';
-                        } elseif (isset($jewelryBySku[$sku])) {
-                            $product = $jewelryBySku[$sku];
-                            $productType = 'jewelry';
+                    if ($variantId) {
+                        $shopifyProduct = \App\Models\ShopifyProduct::where('shopify_variant_id', (string)$variantId)->first();
+                        if ($shopifyProduct) {
+                            $product = $shopifyProduct->product;
+                            $productType = $shopifyProduct->product_type;
+                            if ($product) {
+                                if ($productType === 'diamond') {
+                                    $lockService = app(\App\Services\GlobalDiamondLockService::class);
+                                    $lockService->releaseDiamond($product->id, "Shopify order cancelled (Order ID: {$shopifyOrderId}).");
+                                } else {
+                                    Log::info("Webhook orders/cancelled fallback: Releasing jewelry ID {$product->id} via InventoryService.");
+                                    try {
+                                        $inventoryService->updateInventoryStatus($product, 'available', $store->id, $shopifyOrderId, $order->id ?? null);
+                                    } catch (\Throwable $e) {
+                                        Log::warning("Inventory status update fallback failed or already handled for jewelry ID {$product->id}: " . $e->getMessage());
+                                    }
+                                    \App\Jobs\ReleaseInventoryAcrossStoresJob::dispatch($productType, $product->id);
+                                }
+                            }
                         }
-                    }
-
-                    if ($product && $productType) {
-                        Log::info("Webhook orders/cancelled fallback: Releasing {$productType} ID {$product->id} (SKU: {$sku}) via InventoryService.");
-                        try {
-                            $inventoryService->updateInventoryStatus($product, 'available', $store->id, $shopifyOrderId, $order->id ?? null);
-                        } catch (\Throwable $e) {
-                            Log::warning("Inventory status update fallback failed or already handled for {$productType} ID {$product->id}: " . $e->getMessage());
-                        }
-                        \App\Jobs\ReleaseInventoryAcrossStoresJob::dispatch($productType, $product->id);
                     }
                 }
             }
@@ -542,76 +537,55 @@ class ShopifyWebhookController extends Controller
 
             $reservations = \App\Models\ShopifyInventoryReservation::with('product')
                 ->where('shopify_order_id', $shopifyOrderId)
-                ->where('status', 'hold')
                 ->get();
 
+            $diamondSold = false;
             $inventoryService = app(\App\Services\InventoryService::class);
 
             foreach ($reservations as $reservation) {
                 $product = $reservation->product;
-                if ($product) {
-                    Log::info("Webhook orders/completed: Setting {$reservation->product_type} ID {$product->id} to SOLD.");
-                    $inventoryService->updateInventoryStatus($product, 'sold', $store->id, $shopifyOrderId, $order->id ?? null);
+                $productType = $reservation->product_type;
+                if ($product && $productType) {
+                    if ($productType === \App\Models\Diamond::class || $productType === 'diamond') {
+                        // Associate diamond with order first if missing
+                        if ($order && !$order->diamond_id) {
+                            $order->update(['diamond_id' => $product->id]);
+                        }
+
+                        $lockService = app(\App\Services\GlobalDiamondLockService::class);
+                        $lockService->markSold($product->id, $store->id, $shopifyOrderId, $order->id ?? null);
+                        $diamondSold = true;
+                    } else {
+                        // Fallback for jewelry
+                        Log::info("Webhook orders/completed: Setting jewelry ID {$product->id} to SOLD.");
+                        $inventoryService->updateInventoryStatus($product, 'sold', $store->id, $shopifyOrderId, $order->id ?? null);
+                    }
                 }
             }
 
             // Fallback for line items if no reservations exist
-            if ($reservations->isEmpty()) {
-                $lineItems = $payload['line_items'] ?? [];
-                $variantIds = collect($lineItems)->pluck('variant_id')->filter()->map(fn($id) => (string)$id)->toArray();
-                $productIds = collect($lineItems)->pluck('product_id')->filter()->map(fn($id) => (string)$id)->toArray();
-                $skus = collect($lineItems)->pluck('sku')->filter()->toArray();
-
-                $shopifyProducts = \App\Models\ShopifyProduct::with('product')
-                    ->where(function($query) use ($variantIds, $productIds) {
-                        if (!empty($variantIds)) {
-                            $query->whereIn('shopify_variant_id', $variantIds);
-                        }
-                        if (!empty($productIds)) {
-                            $query->orWhereIn('shopify_product_id', $productIds);
-                        }
-                    })->get();
-
-                $shopifyProductsByVariant = $shopifyProducts->whereNotNull('shopify_variant_id')->keyBy('shopify_variant_id');
-                $shopifyProductsByProduct = $shopifyProducts->whereNotNull('shopify_product_id')->keyBy('shopify_product_id');
-
-                $diamondsBySku = collect();
-                $jewelryBySku = collect();
-                if (!empty($skus)) {
-                    $diamondsBySku = \App\Models\Diamond::whereIn('stock_no', $skus)->get()->keyBy('stock_no');
-                    $jewelryBySku = \App\Models\Jewelery::whereIn('sku', $skus)->get()->keyBy('sku');
-                }
-
+            if (!$diamondSold) {
+                $lineItems = $payload['line_items'] ?? $payload['order']['line_items'] ?? [];
                 foreach ($lineItems as $lineItem) {
                     $variantId = $lineItem['variant_id'] ?? null;
-                    $productId = $lineItem['product_id'] ?? null;
-                    $sku = $lineItem['sku'] ?? null;
-
-                    $shopifyProduct = null;
-                    if ($variantId && isset($shopifyProductsByVariant[(string)$variantId])) {
-                        $shopifyProduct = $shopifyProductsByVariant[(string)$variantId];
-                    } elseif ($productId && isset($shopifyProductsByProduct[(string)$productId])) {
-                        $shopifyProduct = $shopifyProductsByProduct[(string)$productId];
-                    }
-
-                    $product = null;
-                    $productType = null;
-                    if ($shopifyProduct) {
-                        $product = $shopifyProduct->product;
-                        $productType = $shopifyProduct->product_type;
-                    } elseif ($sku) {
-                        if (isset($diamondsBySku[$sku])) {
-                            $product = $diamondsBySku[$sku];
-                            $productType = 'diamond';
-                        } elseif (isset($jewelryBySku[$sku])) {
-                            $product = $jewelryBySku[$sku];
-                            $productType = 'jewelry';
+                    if ($variantId) {
+                        $shopifyProduct = \App\Models\ShopifyProduct::where('shopify_variant_id', (string)$variantId)->first();
+                        if ($shopifyProduct) {
+                            $product = $shopifyProduct->product;
+                            $productType = $shopifyProduct->product_type;
+                            if ($product) {
+                                if ($productType === 'diamond') {
+                                    if ($order && !$order->diamond_id) {
+                                        $order->update(['diamond_id' => $product->id]);
+                                    }
+                                    $lockService = app(\App\Services\GlobalDiamondLockService::class);
+                                    $lockService->markSold($product->id, $store->id, $shopifyOrderId, $order->id ?? null);
+                                } else {
+                                    Log::info("Webhook orders/completed fallback: Setting jewelry ID {$product->id} to SOLD.");
+                                    $inventoryService->updateInventoryStatus($product, 'sold', $store->id, $shopifyOrderId, $order->id ?? null);
+                                }
+                            }
                         }
-                    }
-
-                    if ($product && $productType) {
-                        Log::info("Webhook orders/completed fallback: Setting {$productType} ID {$product->id} to SOLD.");
-                        $inventoryService->updateInventoryStatus($product, 'sold', $store->id, $shopifyOrderId, $order->id ?? null);
                     }
                 }
             }
@@ -946,6 +920,10 @@ class ShopifyWebhookController extends Controller
                     break;
 
                 case 'orders/paid':
+                    $this->handleOrderPaid($payload, $topic);
+                    $this->syncOrderToSuperAdmin($payload, $shopDomain);
+                    break;
+
                 case 'fulfillments/create':
                     $this->handleOrderCompletedWithLock($payload, $shopDomain, $topic);
                     $this->syncOrderToSuperAdmin($payload, $shopDomain);

@@ -194,11 +194,7 @@ class JeweleryController extends Controller
             } else {
                 // Local fallback storage
                 $fileName = time() . '_' . $file->getClientOriginalName();
-                // Ensure target dir exists
-                if (!file_exists(public_path('images/jewelery'))) {
-                    mkdir(public_path('images/jewelery'), 0777, true);
-                }
-                $file->move(public_path('images/jewelery'), $fileName);
+                \Illuminate\Support\Facades\Storage::disk('public_uploads')->putFileAs('images/jewelery', $file, $fileName);
                 $data['image_url'] = 'images/jewelery/' . $fileName;
             }
         }
@@ -403,11 +399,7 @@ class JeweleryController extends Controller
             } else {
                 // Local fallback storage
                 $fileName = time() . '_' . $file->getClientOriginalName();
-                // Ensure target dir exists
-                if (!file_exists(public_path('images/jewelery'))) {
-                    mkdir(public_path('images/jewelery'), 0777, true);
-                }
-                $file->move(public_path('images/jewelery'), $fileName);
+                \Illuminate\Support\Facades\Storage::disk('public_uploads')->putFileAs('images/jewelery', $file, $fileName);
                 $data['image_url'] = 'images/jewelery/' . $fileName;
             }
         }

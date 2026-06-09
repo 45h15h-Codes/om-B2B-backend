@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use Tests\TestCase;
 use App\Models\User;
+use App\Models\AdminPermission;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -14,7 +15,7 @@ class NotificationManagementTest extends TestCase
 
     private function getUser($email = 'admin@omgems.com', $role = 'normal_admin')
     {
-        return User::firstOrCreate(
+        $user = User::firstOrCreate(
             ['email' => $email],
             [
                 'name' => 'Test User',
@@ -22,6 +23,16 @@ class NotificationManagementTest extends TestCase
                 'role' => $role
             ]
         );
+
+        if ($role === 'normal_admin') {
+            AdminPermission::firstOrCreate([
+                'user_id' => $user->id,
+                'permission' => 'view_notifications',
+            ]);
+            $user->refreshPermissionsCache();
+        }
+
+        return $user;
     }
 
     private function createNotification($user, $data = [])
