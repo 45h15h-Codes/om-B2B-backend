@@ -282,7 +282,18 @@ class ExampleTest extends TestCase
     public function test_jewelery_index_page_loads()
     {
         $user = $this->getAdminUser('normal_admin');
-        Jewelery::query()->update(['user_id' => $user->id, 'assigned_admin_id' => $user->id]);
+        
+        Jewelery::create([
+            'sku' => 'R3-236598',
+            'name' => 'Diamond Ring 14 KT Yellow Gold Jewellery',
+            'type' => 'Ring',
+            'price' => 350.00,
+            'location' => 'London, United Kingdom',
+            'user_id' => $user->id,
+            'assigned_admin_id' => $user->id,
+            'created_by' => 'Normal Admin'
+        ]);
+
         $response = $this->actingAs($user)->get('/jewelery');
         $response->assertStatus(200);
         $response->assertSee('Diamond Ring 14 KT Yellow Gold Jewellery');

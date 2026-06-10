@@ -18,6 +18,7 @@ class ShopifyStore extends Model
         'scopes',
         'is_active',
         'webhook_secret',
+        'auth_type',
     ];
 
     protected $casts = [

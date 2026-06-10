@@ -241,6 +241,8 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
 
             // Store A set inventory level
             'https://store-a.myshopify.com/admin/api/2025-10/inventory_levels/set.json' => Http::response(['inventory_level' => []], 200),
+            // Store A unpublish product (sets draft status)
+            'https://store-a.myshopify.com/admin/api/2025-10/products/1001.json' => Http::response(['product' => ['status' => 'draft']], 200),
             // Store B unpublish product (sets draft status)
             'https://store-b.myshopify.com/admin/api/2025-10/products/1002.json' => Http::response(['product' => ['status' => 'draft']], 200),
         ]);
@@ -273,11 +275,16 @@ class ShopifyCrossStoreInventorySyncTest extends TestCase
             'status' => 'hold',
         ]);
 
-        // Verify audit log entries are created: origin store A is skipped, non-origin store B is unpublished
-        $this->assertDatabaseMissing('shopify_inventory_audits', [
+        // Verify Store A (origin) and Store B (non-origin) both get drafted
+        $mappingA->refresh();
+        $mappingB->refresh();
+        $this->assertEquals('draft', $mappingA->shopify_status);
+        $this->assertEquals('draft', $mappingB->shopify_status);
+
+        $this->assertDatabaseHas('shopify_inventory_audits', [
             'shopify_store_id' => $storeA->id,
             'diamond_id' => $diamond->id,
-            'action' => 'lock_set_zero',
+            'action' => 'lock_unpublish',
             'new_quantity' => 0,
         ]);
 

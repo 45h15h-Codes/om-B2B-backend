@@ -249,7 +249,13 @@ class ShopifyService
         $sku = $diamond->report_no ?? $diamond->stock_no ?? ('DM-' . $diamond->id);
         $price = $diamond->asking_price ?? $diamond->cash_price ?? 0.00;
         $description = $diamond->additional_comments ?? $diamond->supplier_comment ?? "Beautiful {$title} Diamond";
+        
+        $status = 'active';
         $quantity = $diamond->number_of_diamonds ?? 1;
+        if ($diamond->inventory_status && in_array(strtolower($diamond->inventory_status), ['hold', 'on_hold', 'sold'])) {
+            $status = 'draft';
+            $quantity = 0;
+        }
 
         $imageUrls = $this->getDiamondImageUrls($diamond);
 
@@ -257,7 +263,7 @@ class ShopifyService
             'product' => [
                 'title' => $title,
                 'body_html' => $description,
-                'status' => 'active',
+                'status' => $status,
                 'product_type' => 'Diamond',
                 'images' => array_map(function($url) {
                     return ['src' => $url];
@@ -306,7 +312,13 @@ class ShopifyService
         $sku = $diamond->report_no ?? $diamond->stock_no ?? ('DM-' . $diamond->id);
         $price = $diamond->asking_price ?? $diamond->cash_price ?? 0.00;
         $description = $diamond->additional_comments ?? $diamond->supplier_comment ?? "Beautiful {$title} Diamond";
+        
+        $status = 'active';
         $quantity = $diamond->number_of_diamonds ?? 1;
+        if ($diamond->inventory_status && in_array(strtolower($diamond->inventory_status), ['hold', 'on_hold', 'sold'])) {
+            $status = 'draft';
+            $quantity = 0;
+        }
 
         $imageUrls = $this->getDiamondImageUrls($diamond);
 
@@ -316,6 +328,7 @@ class ShopifyService
                 'id' => $shopifyProduct->shopify_product_id,
                 'title' => $title,
                 'body_html' => $description,
+                'status' => $status,
                 'images' => array_map(function($url) {
                     return ['src' => $url];
                 }, $imageUrls),
@@ -351,7 +364,14 @@ class ShopifyService
         $sku = $jewelry->sku ?? ('JW-' . $jewelry->id);
         $price = $jewelry->price ?? 0.00;
         $description = $jewelry->description ?? "Beautiful {$title}";
+        
+        $status = 'active';
         $quantity = $jewelry->in_stock ?? 1;
+        if ($jewelry->inventory_status && in_array(strtolower($jewelry->inventory_status), ['hold', 'on_hold', 'sold'])) {
+            $status = 'draft';
+            $quantity = 0;
+        }
+
         $category = $jewelry->type ?? 'Jewelry';
 
         $imageUrls = [];
@@ -363,7 +383,7 @@ class ShopifyService
             'product' => [
                 'title' => $title,
                 'body_html' => $description,
-                'status' => 'active',
+                'status' => $status,
                 'product_type' => $category,
                 'images' => array_map(function($url) {
                     return ['src' => $url];
@@ -404,7 +424,14 @@ class ShopifyService
         $sku = $jewelry->sku ?? ('JW-' . $jewelry->id);
         $price = $jewelry->price ?? 0.00;
         $description = $jewelry->description ?? "Beautiful {$title}";
+        
+        $status = 'active';
         $quantity = $jewelry->in_stock ?? 1;
+        if ($jewelry->inventory_status && in_array(strtolower($jewelry->inventory_status), ['hold', 'on_hold', 'sold'])) {
+            $status = 'draft';
+            $quantity = 0;
+        }
+
         $category = $jewelry->type ?? 'Jewelry';
 
         $imageUrls = [];
@@ -417,6 +444,7 @@ class ShopifyService
                 'id' => $shopifyProduct->shopify_product_id,
                 'title' => $title,
                 'body_html' => $description,
+                'status' => $status,
                 'product_type' => $category,
                 'images' => array_map(function($url) {
                     return ['src' => $url];

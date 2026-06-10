@@ -56,5 +56,9 @@ class AppServiceProvider extends ServiceProvider
             config(['app.url' => $proto . '://' . $_SERVER['HTTP_HOST']]);
             app('url')->forceRootUrl($proto . '://' . $_SERVER['HTTP_HOST']);
         }
+
+        if (str_starts_with(config('app.url'), 'https://')) {
+            app('url')->forceScheme('https');
+        }
     }
 }

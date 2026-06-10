@@ -436,78 +436,229 @@ class ShopifyController extends Controller
     }
 
     /**
-     * Connect a new Shopify store.
+     * Connect a new Shopify store via OAuth initiation.
      */
     public function connectStore(Request $request)
-{
-    // Super Admin cannot connect stores
-    if (session('admin_role') === 'super_admin') {
-        abort(403, 'Super Admin cannot connect Shopify stores.');
-    }
-
-    $request->validate([
-        'shop_domain' => 'required|string',
-        'access_token' => 'required|string',
-        'store_name' => 'nullable|string',
-    ]);
-
-    try {
-        $domain = $request->input('shop_domain');
-        $domain = preg_replace('/^https?:\/\//i', '', $domain);
-        $domain = rtrim($domain, '/');
-
-        // Check if domain is already connected
-        $exists = \App\Models\ShopifyStore::where('shop_domain', $domain)->exists();
-
-        if ($exists) {
-            return redirect()->back()
-                ->withInput()
-                ->with('error', 'This store domain is already registered in the system.');
+    {
+        // Super Admin cannot connect stores
+        if (session('admin_role') === 'super_admin') {
+            abort(403, 'Super Admin cannot connect Shopify stores.');
         }
 
-        // Create temporary store record
-        $store = \App\Models\ShopifyStore::create([
-            'user_id'      => Auth::id(),
-            'store_name'   => $request->input('store_name') ?: $domain,
-            'shop_domain'  => $domain,
-            'access_token' => $request->input('access_token'),
-            'is_active'    => true,
+        $request->validate([
+            'shop_domain' => 'required|string',
+            'store_name' => 'nullable|string',
+            'access_token' => 'nullable|string',
         ]);
 
-        $this->shopify->forStore($store);
+        try {
+            $domain = $request->input('shop_domain');
+            $domain = preg_replace('/^https?:\/\//i', '', $domain);
+            $domain = rtrim($domain, '/');
 
-        if ($this->shopify->testConnection()) {
+            // Check if domain is already connected
+            $exists = \App\Models\ShopifyStore::where('shop_domain', $domain)->exists();
 
+            if ($exists) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'This store domain is already registered in the system.');
+            }
+
+            $accessToken = $request->input('access_token');
+
+            // 1. Manual Connection (Primary / Default)
+            if (!empty($accessToken)) {
+                // Create temporary store record
+                $store = \App\Models\ShopifyStore::create([
+                    'user_id'      => Auth::id(),
+                    'store_name'   => $request->input('store_name') ?: $domain,
+                    'shop_domain'  => $domain,
+                    'access_token' => $accessToken,
+                    'auth_type'    => 'manual',
+                    'is_active'    => true,
+                ]);
+
+                $this->shopify->forStore($store);
+
+                if ($this->shopify->testConnection()) {
+                    $user = Auth::user();
+
+                    if (!$user->active_shopify_store_id) {
+                        $user->update([
+                            'active_shopify_store_id' => $store->id
+                        ]);
+                    }
+
+                    // Automatically verify and register webhooks
+                    try {
+                        app(\App\Services\ShopifySyncService::class)->verifyWebhooks($store->id);
+                    } catch (\Throwable $webhookEx) {
+                        Log::error('Failed to register webhooks during manual store connection', [
+                            'store_id' => $store->id,
+                            'error' => $webhookEx->getMessage(),
+                        ]);
+                    }
+
+                    return redirect()
+                        ->route('shopify.stores')
+                        ->with('success', 'Shopify store connected and verified successfully!');
+                }
+
+                $store->delete();
+
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Failed to connect. Please verify your shop domain and Admin API Access Token.');
+            }
+
+            // 2. OAuth Connection (Optional Fallback)
+            $apiKey = config('shopify.api_key');
+            $scopes = config('shopify.scopes');
+            $redirectUri = route('shopify.callback');
+
+            if (empty($apiKey) || empty($scopes) || empty(config('shopify.api_secret'))) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Admin API Access Token is required to connect a Shopify store.');
+            }
+
+            $state = bin2hex(random_bytes(16));
+            session([
+                'shopify_oauth_state' => $state,
+                'shopify_oauth_shop' => $domain,
+                'shopify_oauth_store_name' => $request->input('store_name')
+            ]);
+
+            $authorizeUrl = "https://{$domain}/admin/oauth/authorize?" . http_build_query([
+                'client_id' => $apiKey,
+                'scope' => $scopes,
+                'redirect_uri' => $redirectUri,
+                'state' => $state,
+            ]);
+
+            Log::info('OAuth Callback URL', [
+                'callback' => route('shopify.callback'),
+            ]);
+
+            Log::info('OAuth Authorize URL', [
+                'url' => $authorizeUrl,
+            ]);
+
+            return redirect()->away($authorizeUrl);
+
+        } catch (\Throwable $e) {
+            Log::error('Shopify Connect Store Failed', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Error initiating connection flow: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Handle Shopify OAuth callback.
+     */
+    public function oauthCallback(Request $request)
+    {
+        $code = $request->query('code');
+        $shop = $request->query('shop');
+        $state = $request->query('state');
+        $hmac = $request->query('hmac');
+
+        if (!$code || !$shop || !$state || !$hmac) {
+            return redirect()->route('shopify.stores')
+                ->with('error', 'Invalid OAuth callback parameters.');
+        }
+
+        // Validate state
+        if ($state !== session('shopify_oauth_state')) {
+            return redirect()->route('shopify.stores')
+                ->with('error', 'OAuth state validation failed. Possible CSRF attack.');
+        }
+
+        // Clean up session state
+        session()->forget(['shopify_oauth_state', 'shopify_oauth_shop']);
+
+        // Verify HMAC signature
+        $params = $request->except('hmac');
+        ksort($params);
+        $pairs = [];
+        foreach ($params as $k => $v) {
+            $pairs[] = "{$k}=" . (is_array($v) ? implode(',', $v) : $v);
+        }
+        $queryString = implode('&', $pairs);
+        $calculatedHmac = hash_hmac('sha256', $queryString, config('shopify.api_secret'));
+
+        if (!hash_equals($hmac, $calculatedHmac)) {
+            return redirect()->route('shopify.stores')
+                ->with('error', 'OAuth signature verification failed.');
+        }
+
+        try {
+            // Exchange code for access token
+            $response = \Illuminate\Support\Facades\Http::post("https://{$shop}/admin/oauth/access_token", [
+                'client_id' => config('shopify.api_key'),
+                'client_secret' => config('shopify.api_secret'),
+                'code' => $code,
+            ]);
+
+            if (!$response->successful()) {
+                Log::error('Shopify Token Exchange Failed', ['response' => $response->body()]);
+                return redirect()->route('shopify.stores')
+                    ->with('error', 'Failed to retrieve access token from Shopify.');
+            }
+
+            $accessToken = $response->json('access_token');
+            $scopes = $response->json('scope');
+
+            // Save/update ShopifyStore
+            $storeName = session('shopify_oauth_store_name') ?: $shop;
+            session()->forget('shopify_oauth_store_name');
+
+            $store = \App\Models\ShopifyStore::updateOrCreate(
+                ['shop_domain' => $shop],
+                [
+                    'user_id' => Auth::id(),
+                    'store_name' => $storeName,
+                    'access_token' => $accessToken,
+                    'scopes' => $scopes,
+                    'auth_type' => 'oauth',
+                    'webhook_secret' => config('shopify.api_secret'),
+                    'is_active' => true,
+                ]
+            );
+
+            // Set as active store for the user
             $user = Auth::user();
+            $user->update([
+                'active_shopify_store_id' => $store->id,
+            ]);
 
-            if (!$user->active_shopify_store_id) {
-                $user->update([
-                    'active_shopify_store_id' => $store->id
+            // Automatically verify and register webhooks
+            try {
+                app(\App\Services\ShopifySyncService::class)->verifyWebhooks($store->id);
+            } catch (\Throwable $webhookEx) {
+                Log::error('Failed to register webhooks during OAuth callback', [
+                    'store_id' => $store->id,
+                    'error' => $webhookEx->getMessage(),
                 ]);
             }
 
-            return redirect()
-                ->route('shopify.stores')
-                ->with('success', 'Shopify store connected and verified successfully!');
+            return redirect()->route('shopify.stores')
+                ->with('success', 'Shopify store connected and authenticated successfully!');
+
+        } catch (\Throwable $e) {
+            Log::error('Shopify OAuth Callback Failed', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return redirect()->route('shopify.stores')
+                ->with('error', 'Error completing authentication: ' . $e->getMessage());
         }
-
-        $store->delete();
-
-        return redirect()->back()
-            ->withInput()
-            ->with('error', 'Failed to connect. Please verify your shop domain and Admin API Access Token.');
-
-    } catch (\Throwable $e) {
-
-        Log::error('Shopify Connect Store Failed', [
-            'message' => $e->getMessage(),
-        ]);
-
-        return redirect()->back()
-            ->withInput()
-            ->with('error', 'Error establishing connection: ' . $e->getMessage());
     }
-}
 
     /**
  * Set the active store for the user.

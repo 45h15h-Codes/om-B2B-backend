@@ -83,6 +83,7 @@ Route::middleware(['auth'])->group(function () {
     // Multi-store Management Routes
     Route::get('/shopify/stores', [\App\Http\Controllers\ShopifyController::class, 'stores'])->name('shopify.stores');
     Route::post('/shopify/stores/connect', [\App\Http\Controllers\ShopifyController::class, 'connectStore'])->name('shopify.connect-store');
+    Route::get('/shopify/callback', [\App\Http\Controllers\ShopifyController::class, 'oauthCallback'])->name('shopify.callback');
     Route::post('/shopify/stores/{store}/set-active', [\App\Http\Controllers\ShopifyController::class, 'setActiveStore'])->name('shopify.set-active-store');
     Route::delete('/shopify/stores/{store}', [\App\Http\Controllers\ShopifyController::class, 'deleteStore'])->name('shopify.delete-store');
 
