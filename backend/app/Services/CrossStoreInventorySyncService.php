@@ -100,9 +100,34 @@ class CrossStoreInventorySyncService
                 continue;
             }
 
-            // Skip the origin store where checkout happened
+            // Skip adjusting inventory on origin store where checkout happened, but still draft the product
             if ($originStoreId && (int)$store->id === (int)$originStoreId) {
-                Log::info("Skipping lock on origin store ID: {$originStoreId} for product ID: {$productId}");
+                Log::info("Drafting origin store product ID: {$mapping->shopify_product_id} on store {$store->shop_domain} without adjusting inventory.");
+                try {
+                    $this->shopify->forStore($store->id);
+                    $success = $this->shopify->unpublishProduct($mapping->shopify_product_id);
+                    if ($success) {
+                        $mapping->update([
+                            'shopify_status' => 'draft',
+                            'sync_status' => 'synced',
+                        ]);
+                        // Create audit entry
+                        ShopifyInventoryAudit::create([
+                            'shopify_store_id' => $store->id,
+                            'diamond_id' => ($productType === 'diamond') ? $productId : null,
+                            'jewelry_id' => ($productType === 'jewelry') ? $productId : null,
+                            'stock_no' => $product->sku ?? $product->stock_no,
+                            'action' => 'lock_unpublish',
+                            'shopify_product_id' => $mapping->shopify_product_id,
+                            'shopify_variant_id' => $mapping->shopify_variant_id,
+                            'previous_quantity' => null,
+                            'new_quantity' => 0,
+                            'api_response' => ['status' => 'drafted_origin_store'],
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    Log::error("Failed to draft product on origin store: " . $e->getMessage());
+                }
                 continue;
             }
 
