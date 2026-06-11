@@ -23,3 +23,9 @@ Route::post('/shopify/webhooks', [\App\Http\Controllers\ShopifyWebhookController
 Route::post('/shopify/webhooks/orders/create', [\App\Http\Controllers\ShopifyWebhookController::class, 'handleWebhookOrderCreate'])
     ->middleware('shopify.webhook');
 
+Route::get('/test', function () {
+    return response()->json([
+        'message' => 'Backend Connected Successfully'
+    ]);
+});
+

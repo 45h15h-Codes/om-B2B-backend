@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Jewelery;
 use App\Services\CloudinaryService;
+use App\Services\BackgroundJobService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -331,6 +332,55 @@ class JeweleryController extends Controller
             return redirect()->route('jewelery.index')->with('success', 'Jewelery item deleted successfully.');
         } catch (\Throwable $e) {
             return redirect()->route('jewelery.index')->with('error', 'Delete failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Remove multiple specified resources from storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function bulkDestroy(Request $request)
+    {
+        // Only Super Admin can delete
+        if (session('admin_role', 'normal_admin') !== 'super_admin') {
+            return redirect()->route('jewelery.index')->with('error', 'Unauthorized: Only Super Admin can delete jewelry.');
+        }
+
+        $ids = $request->input('ids');
+        if (empty($ids) || !is_array($ids)) {
+            return redirect()->route('jewelery.index')->with('error', 'No jewelry items selected for deletion.');
+        }
+
+        try {
+            return BackgroundJobService::track('bulk_jewelery_delete', function($job) use ($ids) {
+                $items = Jewelery::whereIn('id', $ids)->get();
+                $deletedCount = 0;
+                $unauthorizedCount = 0;
+
+                foreach ($items as $item) {
+                    if (Auth::user()->can('delete', $item)) {
+                        $this->deleteFile($item->image_url);
+                        $item->delete();
+                        $deletedCount++;
+                    } else {
+                        $unauthorizedCount++;
+                    }
+                }
+
+                $message = "Successfully deleted {$deletedCount} jewelry items.";
+                if ($unauthorizedCount > 0) {
+                    $message .= " {$unauthorizedCount} items could not be deleted due to insufficient permissions.";
+                }
+
+                $job->message = $message;
+
+                $sessionKey = $unauthorizedCount > 0 ? 'warning' : 'success';
+                return redirect()->route('jewelery.index')->with($sessionKey, $message);
+            });
+        } catch (\Throwable $e) {
+            return redirect()->route('jewelery.index')->with('error', 'Bulk deletion failed: ' . $e->getMessage());
         }
     }
 

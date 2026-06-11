@@ -163,15 +163,21 @@ class AdminUserController extends Controller
             return back()->with('error', 'You can only edit normal admin users.');
         }
 
-        $validPermissions = collect(config('admin_permissions'))->flatten()->unique()->values()->toArray();
-
-        $request->validate([
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $admin->id],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
-            'permissions' => ['nullable', 'array'],
-            'permissions.*' => ['string', \Illuminate\Validation\Rule::in($validPermissions)],
         ]);
+
+        if ($validator->fails()) {
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput()
+                ->with('error_edit_user_id', $admin->id)
+                ->with('error_edit_user_name', $admin->name)
+                ->with('error_edit_user_email', $admin->email)
+                ->with('error_edit_user_update_url', route('admins.update', $admin->id));
+        }
 
         $admin->name = $request->name;
         $admin->email = $request->email;
@@ -180,20 +186,51 @@ class AdminUserController extends Controller
         }
         $admin->save();
 
-        if ($admin->role !== 'super_admin') {
-            \App\Models\AdminPermission::where('user_id', $admin->id)->delete();
-            if ($request->has('permissions')) {
-                foreach ($request->input('permissions', []) as $perm) {
-                    \App\Models\AdminPermission::create([
-                        'user_id' => $admin->id,
-                        'permission' => $perm,
-                    ]);
-                }
+        return redirect()->route('admins.index')->with('success', 'Normal admin updated successfully!');
+    }
+
+    /**
+     * Update the permissions of the specified normal admin in storage.
+     */
+    public function updatePermissions(Request $request, User $admin)
+    {
+        // Enforce super admin only
+        if (Auth::user()->role !== 'super_admin') {
+            abort(403, 'Unauthorized action.');
+        }
+
+        if ($admin->role !== 'normal_admin') {
+            return back()->with('error', 'You can only manage permissions for normal admin users.');
+        }
+
+        $validPermissions = collect(config('admin_permissions'))->flatten()->unique()->values()->toArray();
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['string', \Illuminate\Validation\Rule::in($validPermissions)],
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->back()
+                ->withErrors($validator)
+                ->withInput()
+                ->with('error_admin_id', $admin->id)
+                ->with('error_admin_name', $admin->name)
+                ->with('error_admin_update_url', route('admins.permissions.update', $admin->id));
+        }
+
+        \App\Models\AdminPermission::where('user_id', $admin->id)->delete();
+        if ($request->has('permissions')) {
+            foreach ($request->input('permissions', []) as $perm) {
+                \App\Models\AdminPermission::create([
+                    'user_id' => $admin->id,
+                    'permission' => $perm,
+                ]);
             }
         }
         $admin->refreshPermissionsCache();
 
-        return redirect()->route('admins.index')->with('success', 'Normal admin updated successfully!');
+        return redirect()->route('admins.index')->with('success', 'Permissions updated successfully!');
     }
 
     /**

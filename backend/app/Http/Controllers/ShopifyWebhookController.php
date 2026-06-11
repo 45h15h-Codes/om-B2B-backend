@@ -242,7 +242,7 @@ class ShopifyWebhookController extends Controller
             'subtotal' => $subtotal,
             'discount' => $discount,
             'total' => $total,
-            'status' => 'paid',
+            'status' => $this->mapFinancialStatusToLocalStatus($payload['financial_status'] ?? null),
             'shopify_order_id' => (string) ($payload['id'] ?? ''),
             'shopify_order_number' => (string) ($payload['order_number'] ?? ''),
             'shopify_order_admin_url' => "https://{$store->shop_domain}/admin/orders/" . ($payload['id'] ?? ''),
@@ -281,9 +281,11 @@ class ShopifyWebhookController extends Controller
             } else {
                 $shopifyOrderNumber = (string) ($payload['order_number'] ?? '');
                 $orderAdminUrl = "https://{$store->shop_domain}/admin/orders/{$shopifyOrderId}";
+                $financialStatus = $payload['financial_status'] ?? null;
+                $mappedStatus = $this->mapFinancialStatusToLocalStatus($financialStatus);
 
                 $order->update([
-                    'status' => 'paid',
+                    'status' => $mappedStatus,
                     'shopify_order_id' => $shopifyOrderId,
                     'shopify_order_number' => $shopifyOrderNumber,
                     'shopify_order_admin_url' => $orderAdminUrl,
@@ -291,8 +293,8 @@ class ShopifyWebhookController extends Controller
                 ]);
 
                 $order->logs()->create([
-                    'action' => 'Payment Received',
-                    'message' => "Order converted to Shopify Order #{$shopifyOrderNumber} and marked as paid.",
+                    'action' => 'Order Created/Synced',
+                    'message' => "Order converted to Shopify Order #{$shopifyOrderNumber} and status set to {$mappedStatus}.",
                     'payload' => $payload,
                 ]);
             }
@@ -676,10 +678,12 @@ class ShopifyWebhookController extends Controller
         $order = $this->findOrderFromWebhookPayload($payload, $topic);
         if ($order) {
             $shopifyOrderId = (string) ($payload['id'] ?? '');
+            $financialStatus = $payload['financial_status'] ?? null;
+            $mappedStatus = $this->mapFinancialStatusToLocalStatus($financialStatus);
 
             // Webhook idempotency
-            if ($order->shopify_order_id === $shopifyOrderId && $order->status === 'paid') {
-                Log::info("Webhook idempotency: Order ID {$order->id} already processed as paid. Skipping.");
+            if ($order->shopify_order_id === $shopifyOrderId && $order->status === $mappedStatus) {
+                Log::info("Webhook idempotency: Order ID {$order->id} already processed as {$mappedStatus}. Skipping.");
                 return;
             }
 
@@ -688,7 +692,7 @@ class ShopifyWebhookController extends Controller
             $orderAdminUrl = $shopDomain ? "https://{$shopDomain}/admin/orders/{$shopifyOrderId}" : null;
 
             $order->update([
-                'status' => 'paid',
+                'status' => $mappedStatus,
                 'shopify_order_id' => $shopifyOrderId,
                 'shopify_order_number' => $shopifyOrderNumber,
                 'shopify_order_admin_url' => $orderAdminUrl,
@@ -696,8 +700,8 @@ class ShopifyWebhookController extends Controller
             ]);
 
             $order->logs()->create([
-                'action' => 'Payment Received',
-                'message' => "Order converted to Shopify Order #{$shopifyOrderNumber} and marked as paid.",
+                'action' => 'Order Created/Synced',
+                'message' => "Order converted to Shopify Order #{$shopifyOrderNumber} and status set to {$mappedStatus}.",
                 'payload' => $payload,
             ]);
         }
@@ -837,6 +841,27 @@ class ShopifyWebhookController extends Controller
 
         Log::warning("Shopify Webhook Lookup: No local order matched for payload", ['payload' => $payload]);
         return null;
+    }
+
+    /**
+     * Map Shopify financial status to local order status.
+     */
+    protected function mapFinancialStatusToLocalStatus(?string $financialStatus): string
+    {
+        switch ($financialStatus) {
+            case 'paid':
+            case 'partially_refunded':
+                return 'paid';
+            case 'pending':
+            case 'authorized':
+            case 'partially_paid':
+                return 'pending';
+            case 'refunded':
+            case 'voided':
+                return 'cancelled';
+            default:
+                return 'pending';
+        }
     }
 
     /**

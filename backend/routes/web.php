@@ -40,6 +40,7 @@ Route::middleware(['auth'])->group(function () {
     // Admin Users Management & Impersonation
     Route::post('admins/{admin}/impersonate', [\App\Http\Controllers\AdminUserController::class, 'impersonate'])->name('admins.impersonate');
     Route::post('admins/stop-impersonate', [\App\Http\Controllers\AdminUserController::class, 'stopImpersonate'])->name('admins.stop-impersonate');
+    Route::patch('admins/{admin}/permissions', [\App\Http\Controllers\AdminUserController::class, 'updatePermissions'])->name('admins.permissions.update');
     Route::resource('admins', \App\Http\Controllers\AdminUserController::class);
 
     Route::post('toggle-role', function () {
@@ -67,6 +68,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('jewelery/{jewelery}/approve', [JeweleryController::class, 'approve'])->name('jewelery.approve');
     Route::post('jewelery/{jewelery}/reject', [JeweleryController::class, 'reject'])->name('jewelery.reject');
     Route::post('jewelery/import', [JeweleryController::class, 'import'])->name('jewelery.import');
+    Route::post('jewelery/bulk-delete', [JeweleryController::class, 'bulkDestroy'])->name('jewelery.bulk-delete');
     Route::resource('jewelery', JeweleryController::class);
 
     // Shopify Integration Routes

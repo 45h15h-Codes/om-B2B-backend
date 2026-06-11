@@ -26,10 +26,29 @@ class HomeController extends Controller
 
         $diamondsCount = $diamondQuery->count();
         $jewelryCount = $jewelryQuery->count();
+
+        $availableDiamonds = (clone $diamondQuery)->where(function($q) {
+            $q->whereNull('inventory_status')->orWhere('inventory_status', 'available');
+        })->count();
+        $availableJewelry = (clone $jewelryQuery)->where(function($q) {
+            $q->whereNull('inventory_status')->orWhere('inventory_status', 'available');
+        })->count();
+        $availableCount = $availableDiamonds + $availableJewelry;
+
+        $onHoldDiamonds = (clone $diamondQuery)->whereIn('inventory_status', ['hold', 'on_hold'])->count();
+        $onHoldJewelry = (clone $jewelryQuery)->whereIn('inventory_status', ['hold', 'on_hold'])->count();
+        $onHoldCount = $onHoldDiamonds + $onHoldJewelry;
+
+        $soldDiamonds = (clone $diamondQuery)->where('inventory_status', 'sold')->count();
+        $soldJewelry = (clone $jewelryQuery)->where('inventory_status', 'sold')->count();
+        $soldCount = $soldDiamonds + $soldJewelry;
         
         $stats = [
             'diamonds_count' => $diamondsCount,
             'jewelry_count' => $jewelryCount,
+            'available_count' => $availableCount,
+            'on_hold_count' => $onHoldCount,
+            'sold_count' => $soldCount,
             'active_buy_trades' => 0,
             'active_sell_trades' => 0,
             'unread_messages' => 0,
@@ -64,12 +83,21 @@ class HomeController extends Controller
             ],
         ];
 
+        $typeMapping = [
+            'rings' => 'Ring',
+            'bracelets' => 'Bracelet',
+            'earrings' => 'Earings',
+            'necklaces' => 'Necklace',
+            'watches' => 'Watch',
+        ];
+
         $categories = [];
         foreach ($categoriesData as $key => $cat) {
             $categories[$key] = [
                 'name' => $cat['name'],
                 'count' => $cat['count'],
-                'image' => $this->getCategoryImageUrl($key, $cat['local'])
+                'image' => $this->getCategoryImageUrl($key, $cat['local']),
+                'type' => $typeMapping[$key] ?? $cat['name'],
             ];
         }
 

@@ -433,14 +433,22 @@
                                         </button>
                                     </form>
 
-                                    <!-- Edit Button (opens offcanvas prefilled) -->
-                                    <button type="button" class="btn btn-secondary edit-admin-btn" style="border-color: #cbd5e0; color: #4a5568;" title="Edit admin credentials"
+                                    <!-- Edit User Button -->
+                                    <button type="button" class="btn btn-secondary edit-admin-btn" style="border-color: #cbd5e0; color: #4a5568;" title="Edit admin profile"
                                         data-id="{{ $admin->id }}"
                                         data-name="{{ $admin->name }}"
                                         data-email="{{ $admin->email }}"
-                                        data-permissions="{{ json_encode($admin->permissions->pluck('permission')) }}"
                                         data-update-url="{{ route('admins.update', $admin->id) }}">
-                                        <i class="fa-solid fa-pen-to-square"></i> Edit
+                                        <i class="fa-solid fa-user-pen"></i> Edit User
+                                    </button>
+
+                                    <!-- Manage Permissions Button -->
+                                    <button type="button" class="btn btn-primary manage-permissions-btn" style="background-color: #4a5568; color: #ffffff; border-color: #4a5568;" title="Manage admin permissions"
+                                        data-id="{{ $admin->id }}"
+                                        data-name="{{ $admin->name }}"
+                                        data-permissions="{{ json_encode($admin->permissions->pluck('permission')) }}"
+                                        data-update-url="{{ route('admins.permissions.update', $admin->id) }}">
+                                        <i class="fa-solid fa-shield-halved"></i> Manage Permissions
                                     </button>
 
                                     <!-- Delete Button -->
@@ -513,20 +521,55 @@
                     <input type="password" id="modal-password-confirm" name="password_confirmation" class="modal-form-input" placeholder="Re-enter password" required autocomplete="new-password">
                 </div>
 
+                <!-- Submit and Cancel Actions -->
+                <div class="modal-form-actions" style="position: sticky; bottom: 0; background: transparent; margin-top: 18px; padding-top: 12px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeAdminModal()">
+                        Cancel
+                    </button>
+                    <button type="submit" id="adminFormSubmit" class="btn btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i> Register Account
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Permissions Offcanvas Sidebar + Backdrop -->
+    <div id="permissionsModal" class="admin-modal-overlay" aria-hidden="true">
+        <div id="permissionsOffcanvas" class="admin-offcanvas" role="dialog" aria-modal="true" aria-labelledby="permissionsOffcanvasTitle">
+            <div class="admin-modal-header" style="margin-bottom: 12px;">
+                <h2 id="permissionsOffcanvasTitle" class="admin-modal-title" style="font-size:18px;">
+                    <i class="fa-solid fa-shield-halved"></i> <span>Manage Permissions</span>
+                </h2>
+                <button class="admin-modal-close" onclick="closePermissionsModal()" aria-label="Close sidebar">&times;</button>
+            </div>
+            <p class="admin-modal-subtitle font-semibold">Manage module-level permissions for <strong id="permissionsAdminName"></strong>.</p>
+
+            <!-- Validation Errors -->
+            @if($errors->any() && ($errors->has('permissions') || $errors->has('permissions.*')))
+                <div class="alert alert-error" style="background-color: #fff5f5; border: 1px solid #fed7d7; color: var(--error-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 10px;">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span>{{ $errors->first() }}</span>
+                </div>
+            @endif
+
+            <form id="permissionsForm" action="" method="POST">
+                @csrf
+                @method('PATCH')
+
                 <!-- Permissions Checklist -->
-                <div class="modal-form-group" style="margin-top: 24px;">
-                    <label style="margin-bottom: 12px; display: block; font-weight: 700; font-size: 11px; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Permissions</label>
+                <div class="modal-form-group">
                     <div style="display: flex; flex-direction: column; gap: 16px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
                         @foreach(config('admin_permissions') as $module => $perms)
                             <div>
                                 <span style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">
-                                    {{ ucfirst($module) }}
+                                    {{ ucfirst($module) }} Permissions
                                 </span>
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px;">
                                     @foreach($perms as $perm)
                                         <div style="display: flex; align-items: center; gap: 8px;">
-                                            <input type="checkbox" id="perm_{{ $perm }}" name="permissions[]" value="{{ $perm }}" class="permission-checkbox" style="width: auto; cursor: pointer;">
-                                            <label for="perm_{{ $perm }}" style="font-weight: 600; font-size: 12.5px; text-transform: none; color: #334155; cursor: pointer; letter-spacing: normal; margin-bottom: 0;">
+                                            <input type="checkbox" id="manage_perm_{{ $perm }}" name="permissions[]" value="{{ $perm }}" class="permission-checkbox" style="width: auto; cursor: pointer;">
+                                            <label for="manage_perm_{{ $perm }}" style="font-weight: 600; font-size: 12.5px; text-transform: none; color: #334155; cursor: pointer; letter-spacing: normal; margin-bottom: 0;">
                                                 {{ ucwords(str_replace('_', ' ', $perm)) }}
                                             </label>
                                         </div>
@@ -539,11 +582,11 @@
 
                 <!-- Submit and Cancel Actions -->
                 <div class="modal-form-actions" style="position: sticky; bottom: 0; background: transparent; margin-top: 18px; padding-top: 12px;">
-                    <button type="button" class="btn btn-secondary" onclick="closeAdminModal()">
+                    <button type="button" class="btn btn-secondary" onclick="closePermissionsModal()">
                         Cancel
                     </button>
-                    <button type="submit" id="adminFormSubmit" class="btn btn-primary">
-                        <i class="fa-solid fa-floppy-disk"></i> Register Account
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i> Save Permissions
                     </button>
                 </div>
             </form>
@@ -613,7 +656,39 @@
     });
 
     // Auto-open on validation errors
-    @if($errors->any())
+    @if(session('error_admin_id'))
+    document.addEventListener('DOMContentLoaded', function() {
+        const name = "{{ session('error_admin_name') }}";
+        const updateUrl = "{{ session('error_admin_update_url') }}";
+        const oldPermissions = {!! json_encode(old('permissions', [])) !!};
+        openPermissionsModal(name, oldPermissions, updateUrl);
+    });
+    @elseif(session('error_edit_user_id'))
+    document.addEventListener('DOMContentLoaded', function() {
+        const name = "{{ session('error_edit_user_name') }}";
+        const email = "{{ session('error_edit_user_email') }}";
+        const updateUrl = "{{ session('error_edit_user_update_url') }}";
+        
+        const form = document.getElementById('adminForm');
+        const methodInput = document.getElementById('adminFormMethod');
+        const heading = document.getElementById('adminOffcanvasHeading');
+        const submitBtn = document.getElementById('adminFormSubmit');
+        
+        form.action = updateUrl;
+        methodInput.value = 'PATCH';
+        heading.textContent = 'Edit Normal Admin';
+        submitBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Update Account';
+
+        form.querySelector('#modal-name').value = "{{ old('name') }}";
+        form.querySelector('#modal-email').value = "{{ old('email') }}";
+        form.querySelector('#modal-password').value = '';
+        form.querySelector('#modal-password-confirm').value = '';
+        form.querySelector('#modal-password').required = false;
+        form.querySelector('#modal-password-confirm').required = false;
+
+        openAdminModal();
+    });
+    @elseif($errors->any())
     document.addEventListener('DOMContentLoaded', function() {
         openAdminModal();
     });
@@ -671,7 +746,8 @@
             form.querySelector('#modal-email').value = '';
             form.querySelector('#modal-password').value = '';
             form.querySelector('#modal-password-confirm').value = '';
-            form.querySelectorAll('.permission-checkbox').forEach(cb => cb.checked = false);
+            form.querySelector('#modal-password').required = true;
+            form.querySelector('#modal-password-confirm').required = true;
         }
 
         editButtons.forEach(function(btn) {
@@ -680,7 +756,6 @@
                 const name = btn.dataset.name || '';
                 const email = btn.dataset.email || '';
                 const updateUrl = btn.dataset.updateUrl;
-                const permissions = JSON.parse(btn.dataset.permissions || '[]');
 
                 // set form to update
                 form.action = updateUrl;
@@ -691,14 +766,11 @@
                 // prefill values
                 form.querySelector('#modal-name').value = name;
                 form.querySelector('#modal-email').value = email;
-                // clear password fields for security
+                // clear password fields for security and make optional
                 form.querySelector('#modal-password').value = '';
                 form.querySelector('#modal-password-confirm').value = '';
-
-                // prefill permissions
-                form.querySelectorAll('.permission-checkbox').forEach(cb => {
-                    cb.checked = permissions.includes(cb.value);
-                });
+                form.querySelector('#modal-password').required = false;
+                form.querySelector('#modal-password-confirm').required = false;
 
                 openAdminModal();
             });
@@ -706,7 +778,6 @@
 
         // When offcanvas closes, reset to create mode after delay
         const offcanvas = document.getElementById('adminOffcanvas');
-        const overlay = document.getElementById('adminModal');
         const observer = new MutationObserver(function() {
             // if offcanvas no longer has show class, reset
             if (!offcanvas.classList.contains('show')) {
@@ -714,6 +785,66 @@
             }
         });
         if (offcanvas) observer.observe(offcanvas, { attributes: true, attributeFilter: ['class'] });
+    });
+
+    // Permissions Modal Flow
+    function openPermissionsModal(name, permissions, updateUrl) {
+        const overlay = document.getElementById('permissionsModal');
+        const offcanvas = document.getElementById('permissionsOffcanvas');
+        if (overlay && offcanvas) {
+            document.getElementById('permissionsAdminName').textContent = name;
+            const form = document.getElementById('permissionsForm');
+            form.action = updateUrl;
+
+            // Check correct checkboxes
+            form.querySelectorAll('.permission-checkbox').forEach(cb => {
+                cb.checked = permissions.includes(cb.value);
+            });
+
+            overlay.style.display = 'block';
+            requestAnimationFrame(() => offcanvas.classList.add('show'));
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    function closePermissionsModal() {
+        const overlay = document.getElementById('permissionsModal');
+        const offcanvas = document.getElementById('permissionsOffcanvas');
+        if (overlay && offcanvas) {
+            offcanvas.classList.remove('show');
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                document.body.style.overflow = '';
+            }, 280);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const permButtons = document.querySelectorAll('.manage-permissions-btn');
+        permButtons.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const name = btn.dataset.name || '';
+                const permissions = JSON.parse(btn.dataset.permissions || '[]');
+                const updateUrl = btn.dataset.updateUrl;
+                openPermissionsModal(name, permissions, updateUrl);
+            });
+        });
+
+        // Close when clicking on backdrop
+        window.addEventListener('click', function(event) {
+            const overlay = document.getElementById('permissionsModal');
+            if (overlay && event.target === overlay) {
+                closePermissionsModal();
+            }
+        });
+
+        // Close on Escape key
+        window.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const overlay = document.getElementById('permissionsModal');
+                if (overlay && overlay.style.display === 'block') closePermissionsModal();
+            }
+        });
     });
 
 </script>
