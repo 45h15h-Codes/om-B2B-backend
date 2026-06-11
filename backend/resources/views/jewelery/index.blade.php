@@ -671,6 +671,114 @@
         background-color: #fef3c7;
         color: #92400e;
     }
+
+    /* Custom Confirmation Modal Dialog */
+    .confirm-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.4);
+        display: none;
+        z-index: 9999;
+        animation: fadeIn 0.2s ease-out;
+    }
+
+    .confirm-modal-overlay.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .confirm-modal-box {
+        background-color: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        padding: 32px;
+        max-width: 450px;
+        width: 90%;
+        animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .confirm-modal-header {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text-color);
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .confirm-modal-header i {
+        font-size: 24px;
+        color: var(--error-color);
+    }
+
+    .confirm-modal-message {
+        font-size: 14px;
+        color: var(--text-muted);
+        margin-bottom: 24px;
+        line-height: 1.5;
+    }
+
+    .confirm-modal-footer {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+    }
+
+    .confirm-modal-btn {
+        border: none;
+        border-radius: 6px;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        pointer-events: auto;
+    }
+
+    .confirm-modal-btn-cancel {
+        background-color: #f1f5f9;
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+    }
+
+    .confirm-modal-btn-cancel:hover {
+        background-color: #e2e8f0;
+    }
+
+    .confirm-modal-btn-confirm {
+        background-color: var(--error-color);
+        color: #ffffff;
+    }
+
+    .confirm-modal-btn-confirm:hover {
+        background-color: #dc2626;
+        box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+
+    @keyframes slideUp {
+        from {
+            transform: translateY(20px);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
 </style>
 @endsection
 
@@ -798,7 +906,26 @@
         <!-- Grid Header metadata -->
         <div>
             <div class="grid-header-row">
-                <span class="grid-title-stats">{{ $items->count() }} Items Listed</span>
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <span class="grid-title-stats">{{ $items->count() }} Items Listed</span>
+                    @if($items->count() > 0 && $isAdmin)
+                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 700; cursor: pointer; color: var(--text-color); margin-bottom: 0; margin-left: 10px;">
+                            <input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)" style="accent-color: var(--primary-color); width: 16px; height: 16px; cursor: pointer; vertical-align: middle;">
+                            Select All
+                        </label>
+
+                        <button type="button" id="bulk-delete-btn" class="btn btn-danger"
+                            style="background-color: var(--error-color); color: white; border-color: var(--error-color); border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 33px; padding: 0 12px; font-size: 12.5px; font-weight: 700; border-radius: 6px; opacity: 0.5; pointer-events: none;"
+                            disabled
+                            onclick="handleBulkClick()">
+                            <i class="fa-solid fa-trash"></i> Bulk Delete
+                        </button>
+
+                        <form id="bulk-delete-form" action="{{ route('jewelery.bulk-delete') }}" method="POST" style="display: none;">
+                            @csrf
+                        </form>
+                    @endif
+                </div>
                 <div class="grid-actions">
                     <button class="grid-view-btn">
                         <i class="fa-solid fa-star"></i> Favorites
@@ -814,6 +941,9 @@
                 @forelse($items as $item)
                     <div class="jewelery-card">
                         <div class="card-img-wrapper">
+                            @if($isAdmin)
+                                <input type="checkbox" name="ids[]" value="{{ $item->id }}" form="bulk-delete-form" class="jewelry-checkbox" onchange="toggleBulkBtn()" style="position: absolute; top: 12px; left: 12px; z-index: 11; width: 18px; height: 18px; accent-color: var(--primary-color); cursor: pointer; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.15));">
+                            @endif
                             @if(str_starts_with($item->image_url, 'http'))
                                 <img src="{{ $item->image_url }}" class="card-img" alt="{{ $item->name }}">
                             @else
@@ -1341,6 +1471,16 @@
                     Upload a .csv, .xlsx or .xls spreadsheet file populated with jewelry parameters to import multiple jewelries directly into the database.
                 </p>
 
+                <div class="alert alert-info" style="display: inline-flex; align-items: center; gap: 8px; background-color: #eaf6ec; color: #2e7d32; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; border: 1px solid #c8e6c9; margin-bottom: 0;">
+                    <strong>CSV Format:</strong>
+                    <a href="{{ asset('samples/jewellery_sample.csv') }}"
+                       class="btn btn-sm btn-primary"
+                       style="padding: 4px 10px; font-size: 12px; border-radius: 4px; text-decoration: none; background-color: #2e7d32; color: #ffffff; border: none; cursor: pointer;"
+                       download>
+                        Download Sample
+                    </a>
+                </div>
+
                 <!-- Drag & Drop Zone -->
                 <div class="drop-zone" id="jewelery-drop-zone" onclick="triggerImportFileSelect()" style="width: 100%;">
                     <div style="width: 48px; height: 48px; border-radius: 50%; background-color: var(--primary-light); display: flex; align-items: center; justify-content: center;">
@@ -1359,6 +1499,29 @@
         </form>
     </div>
 </div>
+
+@if($isAdmin)
+<!-- Custom Confirmation Modal -->
+<div id="confirmModalOverlay" class="confirm-modal-overlay">
+    <div class="confirm-modal-box">
+        <div class="confirm-modal-header">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span>Confirm Delete</span>
+        </div>
+        <div class="confirm-modal-message" id="confirmModalMessage">
+            Are you sure you want to delete the selected jewelry items?
+        </div>
+        <div class="confirm-modal-footer">
+            <button class="confirm-modal-btn confirm-modal-btn-cancel" onclick="closeConfirmModal()">
+                Cancel
+            </button>
+            <button class="confirm-modal-btn confirm-modal-btn-confirm" onclick="confirmDel()">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+    </div>
+</div>
+@endif
 @endsection
 
 @section('scripts')
@@ -1539,5 +1702,106 @@
             }
         }
     });
+
+    @if($isAdmin)
+    // Select All and Bulk Delete logic
+    window.toggleSelectAll = function(source) {
+        const checkboxes = document.querySelectorAll('.jewelry-checkbox');
+        checkboxes.forEach(cb => cb.checked = source.checked);
+        toggleBulkBtn();
+    };
+
+    window.toggleBulkBtn = function() {
+        const checkboxes = document.querySelectorAll('.jewelry-checkbox');
+        const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+        const btn = document.getElementById('bulk-delete-btn');
+        if (btn) {
+            if (checkedCount > 0) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.pointerEvents = 'auto';
+            } else {
+                btn.disabled = true;
+                btn.style.opacity = '0.5';
+                btn.style.pointerEvents = 'none';
+            }
+        }
+    };
+
+    window.handleBulkClick = function() {
+        const checkedBoxes = document.querySelectorAll('input[name="ids[]"]:checked');
+        
+        if (checkedBoxes.length === 0) {
+            alert('Please select at least one jewelry item to delete.');
+            return false;
+        }
+        
+        const overlay = document.getElementById('confirmModalOverlay');
+        if (overlay) {
+            const msgElement = document.getElementById('confirmModalMessage');
+            if (msgElement) {
+                msgElement.textContent = `Are you sure you want to delete the ${checkedBoxes.length} selected jewelry item(s)?`;
+            }
+            overlay.classList.add('active');
+            window.pendingCheckedBoxes = checkedBoxes;
+        }
+        
+        return false;
+    };
+
+    window.closeConfirmModal = function() {
+        const overlay = document.getElementById('confirmModalOverlay');
+        if (overlay) {
+            overlay.classList.remove('active');
+        }
+        window.pendingCheckedBoxes = null;
+    };
+
+    window.confirmDel = function() {
+        const form = document.getElementById('bulk-delete-form');
+        if (!form) {
+            alert('Error: Form not found. Please try again.');
+            closeConfirmModal();
+            return;
+        }
+        
+        const checkedBoxes = document.querySelectorAll('input[name="ids[]"]:checked');
+        if (checkedBoxes.length === 0) {
+            alert('No jewelry items selected.');
+            closeConfirmModal();
+            return;
+        }
+        
+        // Clear any existing hidden inputs in the form
+        const existingInputs = form.querySelectorAll('input[name="ids[]"]');
+        existingInputs.forEach(input => input.remove());
+        
+        // Add checked checkboxes as hidden inputs to form
+        checkedBoxes.forEach(checkbox => {
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'ids[]';
+            hiddenInput.value = checkbox.value;
+            form.appendChild(hiddenInput);
+        });
+        
+        closeConfirmModal();
+        
+        setTimeout(() => {
+            form.submit();
+        }, 100);
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const overlay = document.getElementById('confirmModalOverlay');
+        if (overlay) {
+            overlay.addEventListener('click', function(e) {
+                if (e.target === overlay) {
+                    closeConfirmModal();
+                }
+            });
+        }
+    });
+    @endif
 </script>
 @endsection

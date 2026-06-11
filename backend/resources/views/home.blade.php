@@ -173,13 +173,13 @@
         
         <div class="categories-grid">
             @foreach($categories as $key => $cat)
-                <div class="category-card" style="{{ in_array($key, ['necklaces', 'watches']) ? 'margin-top: 10px;' : '' }}">
+                <a href="{{ route('jewelery.index', ['type' => $cat['type']]) }}" class="category-card" style="text-decoration: none; {{ in_array($key, ['necklaces', 'watches']) ? 'margin-top: 10px;' : '' }}">
                     <div class="category-img-box">
                         <img src="{{ $cat['image'] }}" class="category-img" alt="{{ $cat['name'] }}">
                     </div>
                     <span class="category-name">{{ $cat['name'] }}</span>
                     <span class="category-count">{{ $cat['count'] }}</span>
-                </div>
+                </a>
             @endforeach
         </div>
     </div>
@@ -214,9 +214,9 @@
                 labels: ['Available', 'On Hold', 'Sold'],
                 datasets: [{
                     data: [
-                        {{ $stats['diamonds_count'] + $stats['jewelry_count'] }},
-                        2, 
-                        1
+                        {{ $stats['available_count'] }},
+                        {{ $stats['on_hold_count'] }}, 
+                        {{ $stats['sold_count'] }}
                     ],
                     backgroundColor: ['#108bb6', '#f59e0b', '#ef4444'],
                     borderWidth: 1

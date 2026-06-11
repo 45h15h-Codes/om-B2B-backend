@@ -45,8 +45,14 @@ class ShopifyController extends Controller
 
             return [
                 'total' => (clone $query)->count(),
-                'pending' => (clone $query)->where('status', 'pending')->count(),
-                'synced' => (clone $query)->where('status', 'synced')->count(),
+                'pending' => (clone $query)->where('status', 'pending')
+                    ->whereNull('shopify_order_id')
+                    ->whereNull('shopify_draft_id')
+                    ->count(),
+                'synced' => (clone $query)->where(function($q) {
+                    $q->whereNotNull('shopify_order_id')
+                      ->orWhereNotNull('shopify_draft_id');
+                })->count(),
                 'failed' => (clone $query)->where('status', 'failed')->count(),
                 'paid' => (clone $query)->where('status', 'paid')->count(),
                 'cancelled' => (clone $query)->where('status', 'cancelled')->count(),
