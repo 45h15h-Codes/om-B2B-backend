@@ -29,6 +29,49 @@ Route::get('/test', function () {
     ]);
 });
 
+Route::get('/storefront/navigation', [\App\Http\Controllers\Api\StorefrontNavigationController::class, 'index'])
+    ->name('api.storefront.navigation');
+
+Route::get('/storefront/diamonds', [\App\Http\Controllers\Api\StorefrontDiamondController::class, 'index'])
+    ->name('api.storefront.diamonds.index');
+
+Route::get('/storefront/diamonds/filters', [\App\Http\Controllers\Api\StorefrontDiamondController::class, 'filters'])
+    ->name('api.storefront.diamonds.filters');
+
+Route::get('/storefront/diamonds/{diamond}', [\App\Http\Controllers\Api\StorefrontDiamondController::class, 'show'])
+    ->name('api.storefront.diamonds.show');
+
+Route::get('/storefront/jewellery', [\App\Http\Controllers\Api\StorefrontJewelleryController::class, 'index'])
+    ->name('api.storefront.jewellery.index');
+
+Route::get('/storefront/jewellery/filters', [\App\Http\Controllers\Api\StorefrontJewelleryController::class, 'filters'])
+    ->name('api.storefront.jewellery.filters');
+
+Route::get('/storefront/jewellery/{jewellery}', [\App\Http\Controllers\Api\StorefrontJewelleryController::class, 'show'])
+    ->name('api.storefront.jewellery.show');
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/storefront/wishlist', [\App\Http\Controllers\Api\StorefrontWishlistController::class, 'index'])
+        ->name('api.storefront.wishlist.index');
+    Route::post('/storefront/wishlist', [\App\Http\Controllers\Api\StorefrontWishlistController::class, 'store'])
+        ->name('api.storefront.wishlist.store');
+    Route::delete('/storefront/wishlist/{wishlist}', [\App\Http\Controllers\Api\StorefrontWishlistController::class, 'destroy'])
+        ->name('api.storefront.wishlist.destroy');
+    Route::get('/storefront/wishlist/count', [\App\Http\Controllers\Api\StorefrontWishlistController::class, 'count'])
+        ->name('api.storefront.wishlist.count');
+
+    Route::get('/storefront/cart', [\App\Http\Controllers\Api\StorefrontCartController::class, 'index'])
+        ->name('api.storefront.cart.index');
+    Route::post('/storefront/cart', [\App\Http\Controllers\Api\StorefrontCartController::class, 'store'])
+        ->name('api.storefront.cart.store');
+    Route::put('/storefront/cart/{cartItem}', [\App\Http\Controllers\Api\StorefrontCartController::class, 'update'])
+        ->name('api.storefront.cart.update');
+    Route::delete('/storefront/cart/{cartItem}', [\App\Http\Controllers\Api\StorefrontCartController::class, 'destroy'])
+        ->name('api.storefront.cart.destroy');
+    Route::get('/storefront/cart/count', [\App\Http\Controllers\Api\StorefrontCartController::class, 'count'])
+        ->name('api.storefront.cart.count');
+});
+
 /*
 |--------------------------------------------------------------------------
 | Storefront Public Catalog API Routes (V1)

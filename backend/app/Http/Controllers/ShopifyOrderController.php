@@ -23,7 +23,7 @@ class ShopifyOrderController extends Controller
         $role = session('admin_role', Auth::user()->role ?? 'normal_admin');
         $isSuper = ($role === 'super_admin');
 
-        $query = ShopifyOrder::query()->with('shopifyStore');
+        $query = ShopifyOrder::query()->with(['shopifyStore', 'localOrder']);
 
         // Scoping for Normal Admins
         if (!$isSuper) {
@@ -357,5 +357,30 @@ class ShopifyOrderController extends Controller
                 'message' => "Recovery sync failed: " . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * View custom professional invoice for Shopify synced orders.
+     */
+    public function viewInvoice($id)
+    {
+        $role = session('admin_role', Auth::user()->role ?? 'normal_admin');
+        $isSuper = ($role === 'super_admin');
+
+        $order = ShopifyOrder::with('shopifyStore')->findOrFail($id);
+
+        // Ownership validation for normal admin
+        if (!$isSuper) {
+            $userStoreIds = ShopifyStore::where('user_id', Auth::id())->pluck('id')->toArray();
+            if (!in_array($order->shopify_store_id, $userStoreIds)) {
+                abort(403, 'Unauthorized action. You do not have permission to view this invoice.');
+            }
+        }
+
+        // Retrieve local draft/invoice order if matches
+        $localOrder = Order::where('shopify_order_id', $order->shopify_order_id)->first();
+
+        $isWebhook = true;
+        return view('shopify.orders.invoice', compact('order', 'isWebhook', 'localOrder'));
     }
 }

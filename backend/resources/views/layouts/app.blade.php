@@ -684,11 +684,10 @@
             @endif
 
             <!-- Shopify link -->
-            <a href="{{ route('shopify.dashboard') }}" class="sidebar-item {{ (Route::is('shopify.*') || Route::is('orders.*') || Route::is('admin.shopify.orders')) ? 'active' : '' }}">
+            <a href="{{ route('shopify.dashboard') }}" class="sidebar-item {{ (Route::is('shopify.*') || Route::is('admin.shopify.orders')) ? 'active' : '' }}">
                 <i class="fa-brands fa-shopify"></i>
                 <span>Shopify</span>
-            </a>
-            
+            </a> 
             <a href="{{ route('chat') }}" class="sidebar-item {{ Route::is('chat') ? 'active' : '' }}">
                 <i class="fa-solid fa-comments"></i>
                 <span>Chat</span>
@@ -773,14 +772,9 @@
                     <a href="{{ route('shopify.stores') }}" class="header-nav-link {{ Route::is('shopify.stores') ? 'active' : '' }}">
                         Manage Stores
                     </a>
-                    @if(Auth::user()->hasPermission('view_orders'))
-                        <a href="{{ route('orders.index') }}" class="header-nav-link {{ Route::is('orders.*') ? 'active' : '' }}">
-                            Orders
-                        </a>
-                    @endif
                     @if(Auth::user()->hasPermission('view_shopify_orders'))
                         <a href="{{ route('admin.shopify.orders') }}" class="header-nav-link {{ Route::is('admin.shopify.orders') ? 'active' : '' }}">
-                            Shopify Orders
+                            Shopify Store Orders
                         </a>
                     @endif
                 @else

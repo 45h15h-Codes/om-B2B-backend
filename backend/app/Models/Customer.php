@@ -59,4 +59,20 @@ class Customer extends Authenticatable
     {
         return $this->hasMany(Order::class, 'customer_id');
     }
+
+    /**
+     * Get the customer's wishlist items.
+     */
+    public function wishlists()
+    {
+        return $this->hasMany(CustomerWishlist::class, 'customer_id');
+    }
+
+    /**
+     * Get the customer's cart items.
+     */
+    public function cartItems()
+    {
+        return $this->hasMany(CustomerCartItem::class, 'customer_id');
+    }
 }
