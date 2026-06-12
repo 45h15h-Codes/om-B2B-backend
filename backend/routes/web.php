@@ -94,6 +94,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/admin/shopify/orders', [\App\Http\Controllers\ShopifyOrderController::class, 'index'])->name('admin.shopify.orders');
         Route::get('/admin/shopify/orders/export', [\App\Http\Controllers\ShopifyOrderController::class, 'export'])->name('admin.shopify.orders.export');
         Route::get('/admin/shopify/orders/{id}', [\App\Http\Controllers\ShopifyOrderController::class, 'show'])->name('admin.shopify.orders.show');
+        Route::get('/admin/shopify/orders/{id}/invoice', [\App\Http\Controllers\ShopifyOrderController::class, 'viewInvoice'])->name('shopify.orders.invoice');
         Route::post('/admin/shopify/orders/sync-recovery', [\App\Http\Controllers\ShopifyOrderController::class, 'runRecovery'])->name('admin.shopify.orders.sync-recovery');
     });
     
@@ -104,6 +105,10 @@ Route::middleware(['auth'])->group(function () {
         Route::post('orders/{order}/complete', [\App\Http\Controllers\OrderController::class, 'complete'])->name('orders.complete');
         Route::post('orders/{id}/restore', [\App\Http\Controllers\OrderController::class, 'restore'])->name('orders.restore');
         Route::delete('orders/{id}/force-delete', [\App\Http\Controllers\OrderController::class, 'forceDelete'])->name('orders.force-delete');
+    });
+
+    Route::middleware('permission:view_orders')->group(function () {
+        Route::get('/admin/orders/{order}/invoice', [\App\Http\Controllers\OrderController::class, 'viewInvoice'])->name('orders.invoice');
     });
 
     Route::resource('orders', \App\Http\Controllers\OrderController::class)->only(['index', 'show'])->middleware('permission:view_orders')->names([

@@ -38,6 +38,14 @@ class ShopifyOrder extends Model
     }
 
     /**
+     * Get the local draft order associated with this Shopify order.
+     */
+    public function localOrder()
+    {
+        return $this->hasOne(Order::class, 'shopify_order_id', 'shopify_order_id');
+    }
+
+    /**
      * Get parsed items from order_json payload.
      */
     public function getItemsAttribute()

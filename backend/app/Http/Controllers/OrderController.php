@@ -239,7 +239,7 @@ class OrderController extends Controller
     /**
      * Send Shopify Invoice to Customer.
      */
-    public function sendInvoice(Order $order)
+    public function sendInvoice(Request $request, Order $order)
     {
         $isSuper = (session('admin_role', 'normal_admin') === 'super_admin');
         
@@ -251,8 +251,10 @@ class OrderController extends Controller
             return redirect()->back()->with('error', 'Order must be synced to Shopify before sending invoice.');
         }
 
-        // Prevent duplicate invoice sending using invoice_sent_at validation
-        if ($order->invoice_sent_at) {
+        $isResend = $request->has('resend');
+
+        // Prevent duplicate invoice sending using invoice_sent_at validation unless resending
+        if ($order->invoice_sent_at && !$isResend) {
             return redirect()->back()->with('error', 'Invoice has already been sent for this order at ' . $order->invoice_sent_at->format('M d, Y H:i') . '.');
         }
 
@@ -267,22 +269,22 @@ class OrderController extends Controller
 
             $order->logs()->create([
                 'user_id' => Auth::id(),
-                'action' => 'Invoice Sent',
-                'message' => 'Shopify draft order invoice sent to customer.',
+                'action' => $isResend ? 'Invoice Resent' : 'Invoice Sent',
+                'message' => $isResend ? 'Shopify draft order invoice resent to customer.' : 'Shopify draft order invoice sent to customer.',
             ]);
 
-            return redirect()->route('orders.show', $order->id)
-                ->with('success', 'Shopify Draft Order invoice sent successfully!');
+            return redirect()->back()
+                ->with('success', $isResend ? 'Shopify Draft Order invoice resent successfully!' : 'Shopify Draft Order invoice sent successfully!');
         } catch (\Throwable $e) {
             Log::error('Send Shopify Invoice failed: ' . $e->getMessage());
 
             $order->logs()->create([
                 'user_id' => Auth::id(),
-                'action' => 'Invoice Failed',
-                'message' => 'Failed to send Shopify invoice: ' . $e->getMessage(),
+                'action' => $isResend ? 'Invoice Resend Failed' : 'Invoice Failed',
+                'message' => ($isResend ? 'Failed to resend Shopify invoice: ' : 'Failed to send Shopify invoice: ') . $e->getMessage(),
             ]);
 
-            return redirect()->back()->with('error', 'Failed to send invoice via Shopify: ' . $e->getMessage());
+            return redirect()->back()->with('error', ($isResend ? 'Failed to resend invoice via Shopify: ' : 'Failed to send invoice via Shopify: ') . $e->getMessage());
         }
     }
 
@@ -466,6 +468,9 @@ class OrderController extends Controller
     /**
      * Permanently delete an order.
      */
+    /**
+     * Permanent delete an order.
+     */
     public function forceDelete($id)
     {
         if (session('admin_role', 'normal_admin') !== 'super_admin') {
@@ -481,6 +486,22 @@ class OrderController extends Controller
             Log::error('Order permanent deletion failed: ' . $e->getMessage());
             return redirect()->back()->with('error', 'Failed to permanently delete Order: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * View custom professional invoice.
+     */
+    public function viewInvoice(Order $order)
+    {
+        $isSuper = (session('admin_role', 'normal_admin') === 'super_admin');
+
+        // Normal Admin: Cannot access another store's order invoice via URL
+        if (!$isSuper && $order->shopifyStore->user_id !== Auth::id()) {
+            abort(403, 'Unauthorized action. You do not have permission to view this invoice.');
+        }
+
+        $isWebhook = false;
+        return view('shopify.orders.invoice', compact('order', 'isWebhook'));
     }
 }
 

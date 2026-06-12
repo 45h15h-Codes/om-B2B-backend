@@ -222,61 +222,156 @@
 @endsection
 
 @section('content')
+@php
+    $isWebhook = ($order instanceof \App\Models\ShopifyOrder);
+    
+    // Resolve Invoice attributes
+    $invStatus = null;
+    $invSentAt = null;
+    $invUrl = null;
+    $shopifyDraftId = null;
+    $shopifyOrderId = null;
+    $shopifyOrderNum = null;
+    $paymentDate = null;
+
+    if ($isWebhook) {
+        $shopifyOrderId = $order->shopify_order_id;
+        $shopifyOrderNum = $order->order_number;
+        
+        // Check if there's a corresponding local draft order
+        if (isset($localOrder) && $localOrder) {
+            $invStatus = $localOrder->status;
+            $invSentAt = $localOrder->invoice_sent_at;
+            $invUrl = $localOrder->invoice_url;
+            $shopifyDraftId = $localOrder->shopify_draft_id;
+        } else {
+            // Direct Shopify sale
+            $invStatus = ($order->financial_status === 'paid') ? 'paid' : 'pending';
+            $invSentAt = null;
+            $invUrl = null;
+            $shopifyDraftId = null;
+        }
+
+        // Resolve Payment Date for completed orders
+        if (strtolower($order->financial_status) === 'paid') {
+            $payload = $order->order_json;
+            if (is_string($payload)) {
+                $payload = json_decode($payload, true);
+                if (is_string($payload)) {
+                    $payload = json_decode($payload, true);
+                }
+            }
+            $procAt = isset($payload['processed_at']) ? $payload['processed_at'] : null;
+            $paymentDate = $procAt ? \Carbon\Carbon::parse($procAt) : $order->created_at;
+        }
+    } else {
+        // Local Draft Order
+        $invStatus = $order->status;
+        $invSentAt = $order->invoice_sent_at;
+        $invUrl = $order->invoice_url;
+        $shopifyDraftId = $order->shopify_draft_id;
+        $shopifyOrderId = $order->shopify_order_id;
+        $shopifyOrderNum = $order->shopify_order_number;
+        
+        if (in_array(strtolower($order->status), ['paid', 'completed'])) {
+            $paymentDate = $order->updated_at; // Local draft order completion time
+        }
+    }
+@endphp
 <div class="show-container">
     <div class="header-section">
         <div class="header-info">
-            <h2>Order Details</h2>
-            <p style="font-family: monospace; font-size: 13px;">UUID: {{ $order->uuid }}</p>
+            <h2>{{ $isWebhook ? 'Shopify Order Details' : 'Customer Order Details' }}</h2>
+            <p style="font-family: monospace; font-size: 13px;">
+                {{ $isWebhook ? 'Shopify ID: ' . $order->shopify_order_id : 'UUID: ' . $order->uuid }}
+            </p>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
-            <a href="{{ route('orders.index') }}" class="btn btn-secondary">
-                <i class="fa-solid fa-arrow-left"></i> Back to List
+            <a href="{{ $isWebhook ? route('admin.shopify.orders') : route('orders.index') }}" class="btn btn-secondary">
+                <i class="fa-solid fa-arrow-left"></i> Back to {{ $isWebhook ? 'Shopify Orders' : 'Customer Orders' }}
             </a>
 
-            @if($isSuper && $order->status === 'pending')
-                <form action="{{ route('orders.approve', $order->id) }}" method="POST" style="margin: 0;">
-                    @csrf
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fa-solid fa-check-double"></i> Approve & Sync
-                    </button>
-                </form>
-            @endif
-
-            @if($order->status === 'failed')
-                <form action="{{ route('orders.retry', $order->id) }}" method="POST" style="margin: 0;">
-                    @csrf
-                    <button type="submit" class="btn btn-secondary" style="background-color: var(--primary-light); color: var(--primary-color); border-color: var(--primary-color);">
-                        <i class="fa-solid fa-arrows-rotate"></i> Retry Sync
-                    </button>
-                </form>
-            @endif
-
-            @if($order->shopify_draft_id && in_array($order->status, ['synced', 'failed']) && !$order->invoice_sent_at)
-                @if($isSuper)
-                    <form action="{{ route('orders.send-invoice', $order->id) }}" method="POST" style="margin: 0;">
+            @if(!$isWebhook)
+                @if($isSuper && $order->status === 'pending')
+                    <form action="{{ route('orders.approve', $order->id) }}" method="POST" style="margin: 0;">
                         @csrf
-                        <button type="submit" class="btn btn-primary" style="background-color: #108bb6; border-color: #108bb6;">
-                            <i class="fa-solid fa-paper-plane"></i> Send Invoice
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fa-solid fa-check-double"></i> Approve & Sync
                         </button>
                     </form>
                 @endif
-            @endif
 
-            @if($order->shopify_draft_id && in_array($order->status, ['synced', 'invoice_sent']))
-                @if($isSuper)
-                    <form action="{{ route('orders.complete', $order->id) }}" method="POST" style="margin: 0;">
+                @if($order->status === 'failed')
+                    <form action="{{ route('orders.retry', $order->id) }}" method="POST" style="margin: 0;">
                         @csrf
-                        <button type="submit" class="btn btn-primary" style="background-color: var(--success-color); border-color: var(--success-color);">
-                            <i class="fa-solid fa-circle-check"></i> Complete Order
+                        <button type="submit" class="btn btn-secondary" style="background-color: var(--primary-light); color: var(--primary-color); border-color: var(--primary-color);">
+                            <i class="fa-solid fa-arrows-rotate"></i> Retry Sync
                         </button>
                     </form>
                 @endif
-            @endif
 
-            @if($order->invoice_url)
-                <a href="{{ $order->invoice_url }}" target="_blank" class="btn btn-secondary" style="color: var(--primary-color); border-color: var(--primary-color);">
-                    <i class="fa-solid fa-file-invoice-dollar"></i> View Invoice Page <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 10px; margin-left: 4px;"></i>
-                </a>
+                @if($order->shopify_draft_id && in_array($order->status, ['synced', 'failed']) && !$order->invoice_sent_at)
+                    @if($isSuper)
+                        <form action="{{ route('orders.send-invoice', $order->id) }}" method="POST" style="margin: 0;">
+                            @csrf
+                            <button type="submit" class="btn btn-primary" style="background-color: #108bb6; border-color: #108bb6;">
+                                <i class="fa-solid fa-paper-plane"></i> Send Invoice
+                            </button>
+                        </form>
+                    @endif
+                @endif
+
+                @if($order->shopify_draft_id && in_array($order->status, ['synced', 'invoice_sent']))
+                    @if($isSuper)
+                        <form action="{{ route('orders.complete', $order->id) }}" method="POST" style="margin: 0;">
+                            @csrf
+                            <button type="submit" class="btn btn-primary" style="background-color: var(--success-color); border-color: var(--success-color);">
+                                <i class="fa-solid fa-circle-check"></i> Complete Order
+                            </button>
+                        </form>
+                    @endif
+                @endif
+
+                @if($order->shopify_draft_id)
+                    <a href="{{ route('orders.invoice', $order->id) }}?from_show=1" target="_blank" class="btn btn-secondary" style="color: var(--primary-color); border-color: var(--primary-color);">
+                        <i class="fa-solid fa-file-invoice-dollar"></i> View Invoice <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 10px; margin-left: 4px;"></i>
+                    </a>
+                @endif
+            @else
+                @if(isset($localOrder) && $localOrder)
+                    @php
+                        $loHasDraftId = !empty($localOrder->shopify_draft_id);
+                        $loInvoiceSent = !empty($localOrder->invoice_sent_at);
+                    @endphp
+
+                    @if($loHasDraftId && !$loInvoiceSent)
+                        @if($isSuper)
+                            <form action="{{ route('orders.send-invoice', $localOrder->id) }}" method="POST" style="margin: 0;">
+                                @csrf
+                                <button type="submit" class="btn btn-primary" style="background-color: #108bb6; border-color: #108bb6;">
+                                    <i class="fa-solid fa-paper-plane"></i> Send Invoice
+                                </button>
+                            </form>
+                        @endif
+                    @endif
+
+                    @if($loHasDraftId && $loInvoiceSent)
+                        @if($isSuper)
+                            <form action="{{ route('orders.send-invoice', $localOrder->id) }}?resend=1" method="POST" style="margin: 0;">
+                                @csrf
+                                <button type="submit" class="btn btn-primary" style="background-color: #108bb6; border-color: #108bb6;">
+                                    <i class="fa-solid fa-arrows-spin"></i> Resend Invoice
+                                </button>
+                            </form>
+                        @endif
+                    @endif
+
+                    @if($loHasDraftId)
+                        <a href="{{ route('shopify.orders.invoice', $order->id) }}?from_show=1" target="_blank" class="btn btn-secondary" style="color: var(--primary-color); border-color: var(--primary-color);">
+                            <i class="fa-solid fa-file-invoice-dollar"></i> View Invoice <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 10px; margin-left: 4px;"></i>
+                        </a>
+                    @endif
+                @endif
             @endif
 
         </div>
@@ -355,6 +450,7 @@
         <!-- Right Column: Status & Timeline -->
         <div>
             <!-- Status Card -->
+            <!-- Summary Card -->
             <div class="card">
                 <div class="card-header">
                     <h3>Summary</h3>
@@ -389,18 +485,6 @@
                             <span class="info-label">Customer Phone</span>
                             <span class="info-value">{{ $order->customer_phone ?: '-' }}</span>
                         </li>
-                        @if($order->shopify_draft_id)
-                            <li class="info-row" style="padding: 16px 20px;">
-                                <span class="info-label">Shopify Draft ID</span>
-                                <span class="info-value">{{ $order->shopify_draft_id }}</span>
-                            </li>
-                        @endif
-                        @if($order->shopify_order_id)
-                            <li class="info-row" style="padding: 16px 20px;">
-                                <span class="info-label">Shopify Order ID</span>
-                                <span class="info-value">{{ $order->shopify_order_id }}</span>
-                            </li>
-                        @endif
                         @if($order->shopify_order_number)
                             <li class="info-row" style="padding: 16px 20px;">
                                 <span class="info-label">Shopify Order #</span>
@@ -417,12 +501,6 @@
                                 </span>
                             </li>
                         @endif
-                        @if($order->invoice_sent_at)
-                            <li class="info-row" style="padding: 16px 20px;">
-                                <span class="info-label">Invoice Sent At</span>
-                                <span class="info-value">{{ $order->invoice_sent_at->format('M d, Y H:i') }}</span>
-                            </li>
-                        @endif
                         <li class="info-row" style="padding: 16px 20px;">
                             <span class="info-label">Subtotal</span>
                             <span class="info-value">${{ number_format($order->subtotal, 2) }}</span>
@@ -435,6 +513,106 @@
                             <span class="info-label" style="color: var(--text-color); font-size: 16px;">Total</span>
                             <span class="info-value" style="color: var(--primary-color); font-size: 18px;">${{ number_format($order->total, 2) }}</span>
                         </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Invoice Information Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Invoice Information</h3>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <ul class="info-list">
+                        <li class="info-row" style="padding: 16px 20px;">
+                            <span class="info-label">Invoice Status</span>
+                            <span class="info-value">
+                                @php
+                                    $badgeClass = 'badge-pending';
+                                    $uiStatus = 'Draft';
+
+                                    if ($invStatus) {
+                                        $statusLower = strtolower($invStatus);
+                                        if (in_array($statusLower, ['pending', 'approved', 'syncing', 'inventory_unavailable'])) {
+                                            $badgeClass = 'badge-pending';
+                                            $uiStatus = 'Draft';
+                                        } elseif ($statusLower === 'synced') {
+                                            if ($invSentAt) {
+                                                $badgeClass = 'badge-invoice_sent';
+                                                $uiStatus = 'Sent';
+                                            } else {
+                                                $badgeClass = 'badge-synced';
+                                                $uiStatus = 'Ready to Send';
+                                            }
+                                        } elseif ($statusLower === 'invoice_sent') {
+                                            $badgeClass = 'badge-invoice_sent';
+                                            $uiStatus = 'Sent';
+                                        } elseif (in_array($statusLower, ['paid', 'completed'])) {
+                                            $badgeClass = 'badge-paid';
+                                            $uiStatus = 'Paid';
+                                        } elseif ($statusLower === 'failed') {
+                                            $badgeClass = 'badge-failed';
+                                            $uiStatus = 'Sync Failed';
+                                        } elseif ($statusLower === 'cancelled') {
+                                            $badgeClass = 'badge-cancelled';
+                                            $uiStatus = 'Cancelled';
+                                        }
+                                    }
+                                @endphp
+                                <span class="badge badge-{{ $badgeClass }}">
+                                    <span class="badge-dot"></span>
+                                    {{ $uiStatus }}
+                                </span>
+                            </span>
+                        </li>
+                        <li class="info-row" style="padding: 16px 20px;">
+                            <span class="info-label">Invoice Sent At</span>
+                            <span class="info-value">
+                                {{ $invSentAt ? $invSentAt->format('M d, Y H:i') : '-' }}
+                            </span>
+                        </li>
+                        @if($isWebhook)
+                            <li class="info-row" style="padding: 16px 20px;">
+                                <span class="info-label">Payment Date</span>
+                                <span class="info-value">
+                                    {{ $paymentDate ? $paymentDate->format('M d, Y H:i') : '-' }}
+                                </span>
+                            </li>
+                            <li class="info-row" style="padding: 16px 20px;">
+                                <span class="info-label">Shopify Order Number</span>
+                                <span class="info-value" style="font-weight: 700;">#{{ $shopifyOrderNum ?: '-' }}</span>
+                            </li>
+                        @endif
+                        <li class="info-row" style="padding: 16px 20px;">
+                            <span class="info-label">Invoice URL</span>
+                            <span class="info-value">
+                                @if($invUrl)
+                                    <a href="{{ $invUrl }}" target="_blank" style="color: var(--primary-color); text-decoration: none; font-weight: 700;">
+                                        View Invoice <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 10px; margin-left: 2px;"></i>
+                                    </a>
+                                @else
+                                    -
+                                @endif
+                            </span>
+                        </li>
+                        @if($isWebhook && isset($localOrder) && $localOrder)
+                            <li class="info-row" style="padding: 16px 20px;">
+                                <span class="info-label">Source Customer Order ID</span>
+                                <span class="info-value" style="font-weight: 700;">#{{ $localOrder->id }}</span>
+                            </li>
+                        @endif
+                        @if($shopifyDraftId)
+                            <li class="info-row" style="padding: 16px 20px;">
+                                <span class="info-label">Shopify Draft Order ID</span>
+                                <span class="info-value" style="font-family: monospace; font-size: 12px;">{{ $shopifyDraftId }}</span>
+                            </li>
+                        @endif
+                        @if(!$isWebhook && $shopifyOrderId)
+                            <li class="info-row" style="padding: 16px 20px;">
+                                <span class="info-label">Shopify Order ID</span>
+                                <span class="info-value" style="font-family: monospace; font-size: 12px;">{{ $shopifyOrderId }}</span>
+                            </li>
+                        @endif
                     </ul>
                 </div>
             </div>

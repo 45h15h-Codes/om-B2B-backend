@@ -405,6 +405,78 @@
         cursor: not-allowed;
         background-color: #f8fafc;
     }
+
+    /* Split Action Button Dropdown */
+    .action-btn-group {
+        display: inline-flex;
+        border-radius: 6px;
+        overflow: visible;
+        position: relative;
+    }
+    
+    .action-btn-group .btn-details {
+        border-top-right-radius: 0;
+        border-bottom-right-radius: 0;
+    }
+    
+    .action-btn-group .dropdown-trigger {
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+        border-left: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 0 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .action-dropdown-menu {
+        display: none;
+        position: absolute;
+        right: 0;
+        top: 100%;
+        margin-top: 4px;
+        background: #ffffff;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+        z-index: 1000;
+        min-width: 170px;
+        padding: 6px 0;
+    }
+    
+    .action-dropdown-menu.show {
+        display: block;
+    }
+    
+    .action-dropdown-item {
+        width: 100%;
+        padding: 10px 16px;
+        background: none;
+        border: none;
+        text-align: left;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: background-color 0.2s ease, color 0.2s ease;
+        text-decoration: none;
+        box-sizing: border-box;
+    }
+    
+    .action-dropdown-item:hover {
+        background-color: var(--primary-light);
+        color: var(--primary-color);
+    }
+    
+    .action-dropdown-divider {
+        height: 1px;
+        background-color: var(--border-color);
+        margin: 6px 0;
+    }
 </style>
 @endsection
 
@@ -623,6 +695,34 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- Invoice Information Card -->
+                    <div style="border: 1px solid var(--border-color); border-radius: 12px; padding: 18px; background: #fafbfc;">
+                        <h4 style="font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--text-color); display: flex; align-items: center; gap: 8px;">
+                            <i class="fa-solid fa-file-invoice-dollar" style="color: var(--primary-color);"></i> Invoice Information
+                        </h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13.5px;">
+                            <div>
+                                <span style="color: var(--text-muted); display: block; font-size: 11.5px; font-weight: 600; text-transform: uppercase;">Invoice Status</span>
+                                <span id="detInvoiceStatus" class="status-pill">N/A</span>
+                            </div>
+                            <div>
+                                <span style="color: var(--text-muted); display: block; font-size: 11.5px; font-weight: 600; text-transform: uppercase;">Invoice Sent At</span>
+                                <span id="detInvoiceSentAt" style="font-weight: 600;">N/A</span>
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <span style="color: var(--text-muted); display: block; font-size: 11.5px; font-weight: 600; text-transform: uppercase;">Invoice URL</span>
+                                <span id="detInvoiceUrl">N/A</span>
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <span style="color: var(--text-muted); display: block; font-size: 11.5px; font-weight: 600; text-transform: uppercase;">Source Draft Order ID</span>
+                                <span id="detDraftOrderId" style="font-weight: 600; font-family: monospace; font-size: 12.5px;">N/A</span>
+                            </div>
+                            <div style="grid-column: span 2; display: flex; gap: 10px; margin-top: 10px; border-top: 1px dashed var(--border-color); padding-top: 12px; display: none;" id="detInvoiceActionsDiv">
+                                <!-- Populated dynamically by JS -->
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- Payment & Totals -->
                     <div style="border: 1px solid var(--border-color); border-radius: 12px; padding: 18px; background: #fafbfc;">
@@ -812,6 +912,7 @@
         document.addEventListener('click', function(e) {
             const btn = e.target.closest('.view-details-btn');
             if (btn) {
+                const orderId = btn.dataset.orderId || '';
                 const orderNum = btn.dataset.orderNumber || 'N/A';
                 const storeName = btn.dataset.storeName || 'N/A';
                 const storeDomain = btn.dataset.storeDomain || 'N/A';
@@ -833,6 +934,87 @@
                 
                 const processedAt = parsed.processed_at ? new Date(parsed.processed_at).toLocaleString() : 'N/A';
                 document.getElementById('detProcessedAt').textContent = processedAt;
+
+                // Populate invoice tracking info
+                const invoiceStatus = btn.dataset.invoiceStatus || 'N/A';
+                const invoiceBadgeClass = btn.dataset.invoiceBadgeClass || 'badge-neutral';
+                const invoiceSentAt = btn.dataset.invoiceSentAt || 'N/A';
+                const invoiceUrl = btn.dataset.invoiceUrl || '';
+                const draftOrderId = btn.dataset.draftOrderId || 'N/A';
+                const shopifyDraftId = btn.dataset.shopifyDraftId || '';
+
+                const detInvStatus = document.getElementById('detInvoiceStatus');
+                detInvStatus.textContent = invoiceStatus;
+                detInvStatus.className = 'status-pill ' + invoiceBadgeClass;
+
+                document.getElementById('detInvoiceSentAt').textContent = invoiceSentAt;
+                document.getElementById('detDraftOrderId').textContent = draftOrderId;
+
+                const detInvUrl = document.getElementById('detInvoiceUrl');
+                if (shopifyDraftId && orderId) {
+                    detInvUrl.innerHTML = `<a href="/admin/shopify/orders/${orderId}/invoice" target="_blank" style="color: var(--primary-color); text-decoration: none; font-weight: 700;">View Invoice <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 10px; margin-left: 4px;"></i></a>`;
+                } else {
+                    detInvUrl.textContent = 'N/A';
+                }
+
+                // Populate invoice actions in details modal
+                const actionsDiv = document.getElementById('detInvoiceActionsDiv');
+                actionsDiv.innerHTML = '';
+                const localOrderDraftId = draftOrderId !== 'N/A' ? draftOrderId.replace('#', '') : null;
+
+                if (localOrderDraftId && shopifyDraftId) {
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                    const isSuperAdmin = "{{ session('admin_role', auth()->user()->role) === 'super_admin' ? '1' : '0' }}" === "1";
+
+                    // Send / Resend Form
+                    if (invoiceStatus === 'Sent' || invoiceStatus === 'Ready to Send' || invoiceSentAt !== 'N/A') {
+                        // Resend button
+                        if (isSuperAdmin) {
+                            actionsDiv.innerHTML += `
+                                <form action="/orders/${localOrderDraftId}/send-invoice?resend=1" method="POST" style="margin: 0;">
+                                    <input type="hidden" name="_token" value="${csrfToken}">
+                                    <button type="submit" class="btn btn-primary" style="height: 36px; padding: 0 14px; font-size: 12.5px; background-color: #108bb6; border-color: #108bb6; display: inline-flex; align-items: center; gap: 6px;">
+                                        <i class="fa-solid fa-arrows-spin"></i> Resend Invoice
+                                    </button>
+                                </form>
+                            `;
+                        } else {
+                            actionsDiv.innerHTML += `
+                                <button type="button" class="btn btn-secondary" style="height: 36px; padding: 0 14px; font-size: 12.5px; opacity: 0.5; cursor: not-allowed;" title="Super Admin Only">
+                                    <i class="fa-solid fa-arrows-spin"></i> Resend Invoice (Super Admin)
+                                </button>
+                            `;
+                        }
+                    } else if (invoiceStatus === 'Draft' || invoiceStatus === 'Ready to Send') {
+                        // Send button
+                        if (isSuperAdmin) {
+                            actionsDiv.innerHTML += `
+                                <form action="/orders/${localOrderDraftId}/send-invoice" method="POST" style="margin: 0;">
+                                    <input type="hidden" name="_token" value="${csrfToken}">
+                                    <button type="submit" class="btn btn-primary" style="height: 36px; padding: 0 14px; font-size: 12.5px; background-color: #108bb6; border-color: #108bb6; display: inline-flex; align-items: center; gap: 6px;">
+                                        <i class="fa-solid fa-paper-plane"></i> Send Invoice
+                                    </button>
+                                </form>
+                            `;
+                        } else {
+                            actionsDiv.innerHTML += `
+                                <button type="button" class="btn btn-secondary" style="height: 36px; padding: 0 14px; font-size: 12.5px; opacity: 0.5; cursor: not-allowed;" title="Super Admin Only">
+                                    <i class="fa-solid fa-paper-plane"></i> Send Invoice (Super Admin)
+                                </button>
+                            `;
+                        }
+                    }
+
+                    // View Invoice
+                    actionsDiv.innerHTML += `
+                        <a href="/admin/shopify/orders/${orderId}/invoice" target="_blank" class="btn btn-secondary" style="height: 36px; padding: 0 14px; font-size: 12.5px; color: var(--primary-color); border-color: var(--primary-color); display: inline-flex; align-items: center; gap: 6px; text-decoration: none;">
+                            <i class="fa-solid fa-file-invoice-dollar"></i> View Invoice
+                        </a>
+                    `;
+                    actionsDiv.style.display = 'flex';
+                } else {
+                    actionsDiv.style.display = 'none';
+                }
 
                 // Customer Info
                 const cust = parsed.customer || {};
@@ -1046,6 +1228,29 @@
         }
 
         startPolling();
+
+        // Toggle Action Dropdowns
+        document.addEventListener('click', function(e) {
+            const trigger = e.target.closest('.dropdown-trigger');
+            if (trigger) {
+                e.stopPropagation();
+                // Close all other dropdowns
+                document.querySelectorAll('.action-dropdown-menu').forEach(menu => {
+                    if (menu !== trigger.nextElementSibling) {
+                        menu.classList.remove('show');
+                    }
+                });
+                const menu = trigger.nextElementSibling;
+                if (menu) {
+                    menu.classList.toggle('show');
+                }
+            } else {
+                // Clicked outside, close all dropdowns
+                document.querySelectorAll('.action-dropdown-menu').forEach(menu => {
+                    menu.classList.remove('show');
+                });
+            }
+        });
     });
 </script>
 @endsection
