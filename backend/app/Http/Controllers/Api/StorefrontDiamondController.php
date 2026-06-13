@@ -37,6 +37,8 @@ class StorefrontDiamondController extends Controller
             'status',
             'inventory_status',
             'specifications',
+            'images',
+            'videos',
             'created_at'
         ]);
 

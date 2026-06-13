@@ -35,6 +35,8 @@ class StorefrontJewelleryController extends Controller
             'status',
             'inventory_status',
             'specifications',
+            'images',
+            'videos',
             'created_at'
         ]);
 
@@ -52,14 +54,58 @@ class StorefrontJewelleryController extends Controller
 
         // 2. Filter: Category (single or multi-select virtual specifications field)
         if ($request->filled('category')) {
-            $category = $request->input('category');
-            if (is_array($category)) {
-                $query->whereIn('specifications->category', $category);
-            } elseif (str_contains($category, ',')) {
-                $query->whereIn('specifications->category', array_map('trim', explode(',', $category)));
-            } else {
-                $query->where('specifications->category', $category);
+            $categoryInput = $request->input('category');
+            $categories = is_array($categoryInput)
+                ? $categoryInput
+                : array_map('trim', explode(',', $categoryInput));
+
+            // Load master category mappings
+            $masterOptions = [];
+            $categoryRow = \App\Models\Category::where('type', 'jewelery_type')->first();
+            if ($categoryRow && is_array($categoryRow->names)) {
+                foreach ($categoryRow->names as $item) {
+                    $name = is_array($item) ? ($item['name'] ?? '') : $item;
+                    if ($name !== '') {
+                        $slug = \Illuminate\Support\Str::slug($name);
+                        $masterOptions[strtolower($name)] = $name;
+                        $masterOptions[$slug] = $name;
+                    }
+                }
             }
+
+            // Also load active specifications categories to support case-insensitive/slug queries for custom/legacy categories
+            $activeSpecCats = Jewelery::query()
+                ->where('status', Jewelery::STATUS_APPROVED)
+                ->where('inventory_status', 'available')
+                ->whereNotNull('specifications')
+                ->pluck('specifications')
+                ->map(fn($spec) => $spec['category'] ?? null)
+                ->filter()
+                ->unique();
+
+            foreach ($activeSpecCats as $catName) {
+                $slug = \Illuminate\Support\Str::slug($catName);
+                $masterOptions[strtolower($catName)] = $catName;
+                $masterOptions[$slug] = $catName;
+            }
+
+            $searchNames = [];
+            foreach ($categories as $catVal) {
+                $lowerVal = strtolower($catVal);
+                if (isset($masterOptions[$lowerVal])) {
+                    $searchNames[] = $masterOptions[$lowerVal];
+                } else {
+                    $searchNames[] = $catVal; // Fallback to raw value
+                }
+            }
+
+            $query->where(function ($q) use ($searchNames, $categories) {
+                // Search in physical type column
+                $q->whereIn('type', $searchNames);
+                // Also search in virtual specifications->category field (supporting both the mapped master names and raw input values for backwards compatibility)
+                $allSpecSearch = array_unique(array_merge($searchNames, $categories));
+                $q->orWhereIn('specifications->category', $allSpecSearch);
+            });
         }
 
         // 3. Filter: Metal (single or multi-select virtual specifications->metal_type field)
@@ -119,6 +165,19 @@ class StorefrontJewelleryController extends Controller
     }
 
     /**
+     * Retrieve available jewellery categories from the master category table.
+     *
+     * @return JsonResponse
+     */
+    public function categories(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->getJewelleryCategories(),
+        ]);
+    }
+
+    /**
      * Retrieve available jewellery listing filters dynamically.
      *
      * @return JsonResponse
@@ -131,22 +190,17 @@ class StorefrontJewelleryController extends Controller
 
         $types = (clone $baseQuery)->whereNotNull('type')->pluck('type')->unique()->sort()->values()->all();
 
+        $categories = $this->getJewelleryCategories();
+
         // Retrieve specifications from DB and parse in PHP
         $specifications = (clone $baseQuery)->whereNotNull('specifications')->pluck('specifications')->all();
-        $categoriesList = [];
         $metalsList = [];
         foreach ($specifications as $spec) {
-            $cat = $spec['category'] ?? null;
-            if ($cat !== null && $cat !== '') {
-                $categoriesList[] = $cat;
-            }
             $metal = $spec['metal_type'] ?? null;
             if ($metal !== null && $metal !== '') {
                 $metalsList[] = $metal;
             }
         }
-        $categories = array_values(array_unique($categoriesList));
-        sort($categories);
         $metals = array_values(array_unique($metalsList));
         sort($metals);
 
@@ -165,6 +219,51 @@ class StorefrontJewelleryController extends Controller
                 ]
             ]
         ]);
+    }
+
+    /**
+     * Get jewellery categories populated from the category master table with products count.
+     *
+     * @return array
+     */
+    private function getJewelleryCategories(): array
+    {
+        $categoryRow = \App\Models\Category::where('type', 'jewelery_type')->first();
+        $categories = [];
+        $index = 1;
+
+        if ($categoryRow && is_array($categoryRow->names)) {
+            foreach ($categoryRow->names as $item) {
+                $name = is_array($item) ? ($item['name'] ?? '') : $item;
+                if ($name === '') {
+                    continue;
+                }
+                $image = is_array($item) ? ($item['image'] ?? null) : null;
+                if (!$image) {
+                    $image = \App\Models\Category::findLocalIcon($name);
+                }
+
+                // Count approved and available products matching this category (either by type column or specifications->category field)
+                $productsCount = Jewelery::query()
+                    ->where('status', Jewelery::STATUS_APPROVED)
+                    ->where('inventory_status', 'available')
+                    ->where(function ($q) use ($name) {
+                        $q->where('type', $name)
+                          ->orWhere('specifications->category', $name);
+                    })
+                    ->count();
+
+                $categories[] = [
+                    'id' => $index++,
+                    'name' => $name,
+                    'slug' => \Illuminate\Support\Str::slug($name),
+                    'image' => $image ? (str_starts_with($image, 'http://') || str_starts_with($image, 'https://') ? $image : asset($image)) : null,
+                    'products_count' => $productsCount,
+                ];
+            }
+        }
+
+        return $categories;
     }
 
     /**

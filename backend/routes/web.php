@@ -27,6 +27,8 @@ use App\Services\ShopifyService;
 Route::get('login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::post('login', [AuthController::class, 'login'])->name('login.post');
 Route::post('logout', [AuthController::class, 'logout'])->name('logout');
+Route::get('set-password', [AuthController::class, 'showSetPasswordForm'])->name('password.set');
+Route::post('set-password', [AuthController::class, 'setPassword'])->name('password.set.post');
 
 // Protected Admin Routes
 Route::middleware(['auth'])->group(function () {
@@ -207,7 +209,10 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/system/failed-jobs/retry-multiple', [\App\Http\Controllers\FailedJobController::class, 'retryMultiple'])->name('system.failed-jobs.retry-multiple');
     Route::delete('/system/failed-jobs/delete-multiple', [\App\Http\Controllers\FailedJobController::class, 'destroyMultiple'])->name('system.failed-jobs.delete-multiple');
     Route::post('/system/failed-jobs/retry-all', [\App\Http\Controllers\FailedJobController::class, 'retryAll'])->name('system.failed-jobs.retry-all');
-    Route::delete('/system/failed-jobs/delete-all', [\App\Http\Controllers\FailedJobController::class, 'destroyAll'])->name('system.failed-jobs.delete-all');
+    // B2B Partnership Requests Routes
+    Route::resource('partnership-requests', \App\Http\Controllers\PartnershipRequestController::class)->only(['index', 'show']);
+    Route::post('partnership-requests/{id}/approve', [\App\Http\Controllers\PartnershipRequestController::class, 'approve'])->name('partnership-requests.approve');
+    Route::post('partnership-requests/{id}/reject', [\App\Http\Controllers\PartnershipRequestController::class, 'reject'])->name('partnership-requests.reject');
 });
 
 

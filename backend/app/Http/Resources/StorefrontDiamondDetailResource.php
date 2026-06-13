@@ -40,15 +40,26 @@ class StorefrontDiamondDetailResource extends JsonResource
 
         // 3. Absolute image URLs collection formatting
         $images = [];
-        $specImages = $specs['images'] ?? null;
-        if (is_array($specImages)) {
-            foreach ($specImages as $img) {
+        $dbImages = $this->images;
+        if (is_array($dbImages) && count($dbImages) > 0) {
+            foreach ($dbImages as $img) {
                 if (!empty($img)) {
-                    $images[] = (str_starts_with($img, 'http://') || str_starts_with($img, 'https://')) ? $img : asset($img);
+                    $images[] = (str_starts_with($img, 'http://') || str_starts_with($img, 'https://')) 
+                        ? $img 
+                        : (str_starts_with($img, 'diamonds/') || str_starts_with($img, 'jewelleries/') ? \Illuminate\Support\Facades\Storage::disk('public')->url($img) : asset($img));
                 }
             }
-        } elseif (is_string($specImages) && !empty($specImages)) {
-            $images[] = (str_starts_with($specImages, 'http://') || str_starts_with($specImages, 'https://')) ? $specImages : asset($specImages);
+        } else {
+            $specImages = $specs['images'] ?? null;
+            if (is_array($specImages)) {
+                foreach ($specImages as $img) {
+                    if (!empty($img)) {
+                        $images[] = (str_starts_with($img, 'http://') || str_starts_with($img, 'https://')) ? $img : asset($img);
+                    }
+                }
+            } elseif (is_string($specImages) && !empty($specImages)) {
+                $images[] = (str_starts_with($specImages, 'http://') || str_starts_with($specImages, 'https://')) ? $specImages : asset($specImages);
+            }
         }
 
         // Fallback to legacy single image if images array is empty
@@ -60,9 +71,29 @@ class StorefrontDiamondDetailResource extends JsonResource
         }
 
         // 4. Video link formatting
-        $videoUrl = $specs['video'] ?? $this->sarine_loupe;
-        if (!empty($videoUrl) && !str_starts_with($videoUrl, 'http://') && !str_starts_with($videoUrl, 'https://')) {
-            $videoUrl = asset($videoUrl);
+        $videos = [];
+        $videoUrl = null;
+        $dbVideos = $this->videos;
+        if (is_array($dbVideos) && count($dbVideos) > 0) {
+            foreach ($dbVideos as $vid) {
+                if (!empty($vid)) {
+                    $absVidUrl = (str_starts_with($vid, 'http://') || str_starts_with($vid, 'https://')) 
+                        ? $vid 
+                        : (str_starts_with($vid, 'diamonds/') || str_starts_with($vid, 'jewelleries/') ? \Illuminate\Support\Facades\Storage::disk('public')->url($vid) : asset($vid));
+                    $videos[] = $absVidUrl;
+                }
+            }
+            if (count($videos) > 0) {
+                $videoUrl = $videos[0];
+            }
+        } else {
+            $videoUrl = $specs['video'] ?? $this->sarine_loupe;
+            if (!empty($videoUrl)) {
+                if (!str_starts_with($videoUrl, 'http://') && !str_starts_with($videoUrl, 'https://')) {
+                    $videoUrl = asset($videoUrl);
+                }
+                $videos[] = $videoUrl;
+            }
         }
 
         return [
@@ -90,6 +121,7 @@ class StorefrontDiamondDetailResource extends JsonResource
             'description' => $specs['description'] ?? null,
             'images' => $images,
             'video' => $videoUrl ?: null,
+            'videos' => $videos,
             'created_at' => $this->created_at ? $this->created_at->utc()->format('Y-m-d\TH:i:s\Z') : null,
         ];
     }

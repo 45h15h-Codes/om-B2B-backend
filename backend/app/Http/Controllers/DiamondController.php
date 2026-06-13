@@ -162,6 +162,15 @@ class DiamondController extends Controller
                         // Map Toggle Booleans correctly
                         $diamondItem = $this->handleBooleanFields($diamondItem, $diamondItem);
 
+                        $showOnOM = !empty($diamondItem['show_on_OM']);
+                        $reportNo = isset($diamondItem['report_no']) ? trim($diamondItem['report_no']) : '';
+                        if ($showOnOM && !empty($reportNo)) {
+                            $exists = Diamond::where('customer_website_report_no', $reportNo)->exists();
+                            if ($exists) {
+                                throw new \Exception("Diamond is already uploaded.");
+                            }
+                        }
+
                         $diamondItem['created_by'] = $meta['created_by'];
                         $diamondItem['status'] = $meta['status'];
                         $diamondItem['user_id'] = Auth::id();
@@ -181,7 +190,22 @@ class DiamondController extends Controller
             }
         }
 
-        // Single Diamond upload
+        $request->validate([
+            'images' => 'nullable|array',
+            'images.*' => 'file|mimes:jpg,jpeg,png,webp|max:10240',
+            'videos' => 'nullable|array',
+            'videos.*' => 'file|mimes:mp4,mov,avi|max:51200',
+        ]);
+
+        $showOnOM = $request->boolean('show_on_OM');
+        $reportNo = trim($request->input('report_no') ?? '');
+        if ($showOnOM && !empty($reportNo)) {
+            $exists = Diamond::where('customer_website_report_no', $reportNo)->exists();
+            if ($exists) {
+                return redirect()->back()->withInput()->with('error', 'Diamond is already uploaded.');
+            }
+        }
+
         $backgroundJob = BackgroundJobService::createJob('diamond_upload', 'pending');
 
         try {
@@ -196,6 +220,11 @@ class DiamondController extends Controller
 
             // Handle File Uploads (with Cloudinary & local fallback)
             $data = $this->processFileUploads($request, $data);
+
+            // Handle multiple images & videos upload
+            $media = $this->processMultipleFileUploads($request, 'diamonds');
+            $data['images'] = $media['images'];
+            $data['videos'] = $media['videos'];
 
             // Toggles / Booleans
             $data = $this->handleBooleanFields($request, $data);
@@ -256,9 +285,31 @@ class DiamondController extends Controller
             return redirect()->back()->with('error', 'Update failed: Cannot edit or update a sold diamond.');
         }
 
+        $request->validate([
+            'images' => 'nullable|array',
+            'images.*' => 'file|mimes:jpg,jpeg,png,webp|max:10240',
+            'videos' => 'nullable|array',
+            'videos.*' => 'file|mimes:mp4,mov,avi|max:51200',
+            'remove_images' => 'nullable|array',
+            'remove_images.*' => 'string',
+            'remove_videos' => 'nullable|array',
+            'remove_videos.*' => 'string',
+        ]);
+
+        $showOnOM = $request->boolean('show_on_OM');
+        $reportNo = trim($request->input('report_no') ?? '');
+        if ($showOnOM && !empty($reportNo)) {
+            $exists = Diamond::where('customer_website_report_no', $reportNo)
+                ->where('id', '!=', $diamond->id)
+                ->exists();
+            if ($exists) {
+                return redirect()->back()->withInput()->with('error', 'Diamond is already uploaded.');
+            }
+        }
+
         try {
             return BackgroundJobService::track('diamond_update', function($job) use ($request, $diamond) {
-                $data = $request->except(['_token', '_method', 'diamonds_json']);
+                $data = $request->except(['_token', '_method', 'diamonds_json', 'remove_images', 'remove_videos']);
 
                 if (empty($data['stock_no'])) {
                     throw new \Exception("Stock number is required.");
@@ -269,6 +320,35 @@ class DiamondController extends Controller
 
                 // Handle File Uploads (with Cloudinary & local fallback)
                 $data = $this->processFileUploads($request, $data, $diamond);
+
+                // Handle image removal & merges
+                $existingImages = $diamond->images ?? [];
+                if ($request->has('remove_images')) {
+                    foreach ($request->input('remove_images') as $removePath) {
+                        if (($key = array_search($removePath, $existingImages)) !== false) {
+                            unset($existingImages[$key]);
+                            \Illuminate\Support\Facades\Storage::disk('public')->delete($removePath);
+                        }
+                    }
+                    $existingImages = array_values($existingImages);
+                }
+
+                // Handle video removal & merges
+                $existingVideos = $diamond->videos ?? [];
+                if ($request->has('remove_videos')) {
+                    foreach ($request->input('remove_videos') as $removePath) {
+                        if (($key = array_search($removePath, $existingVideos)) !== false) {
+                            unset($existingVideos[$key]);
+                            \Illuminate\Support\Facades\Storage::disk('public')->delete($removePath);
+                        }
+                    }
+                    $existingVideos = array_values($existingVideos);
+                }
+
+                // Handle new uploads
+                $media = $this->processMultipleFileUploads($request, 'diamonds', $existingImages, $existingVideos);
+                $data['images'] = $media['images'];
+                $data['videos'] = $media['videos'];
 
                 // Toggles / Booleans
                 $data = $this->handleBooleanFields($request, $data);
@@ -295,7 +375,7 @@ class DiamondController extends Controller
         try {
             $this->authorize('delete', $diamond);
         } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
-            return redirect()->route('diamonds.index')->with('error', 'Unauthorized: Only Super Admin can delete diamonds.');
+            abort(403, 'Unauthorized action.');
         }
 
         try {
@@ -557,19 +637,19 @@ class DiamondController extends Controller
      */
     public function bulkDestroy(Request $request)
     {
-        // Only Super Admin can delete
-        if (session('admin_role', 'normal_admin') !== 'super_admin') {
-            return redirect()->to(session('diamonds_search_url', route('diamonds.index')))->with('error', 'Unauthorized: Only Super Admin can delete diamonds.');
-        }
-
         $ids = $request->input('ids');
         if (empty($ids) || !is_array($ids)) {
             return redirect()->to(session('diamonds_search_url', route('diamonds.index')))->with('error', 'No diamonds selected for deletion.');
         }
 
+        $diamonds = Diamond::whereIn('id', $ids)->get();
+
+        foreach ($diamonds as $diamond) {
+            $this->authorize('delete', $diamond);
+        }
+
         try {
-            return BackgroundJobService::track('bulk_diamond_delete', function($job) use ($ids) {
-                $diamonds = Diamond::whereIn('id', $ids)->get();
+            return BackgroundJobService::track('bulk_diamond_delete', function($job) use ($diamonds) {
                 $deletedCount = 0;
 
                 foreach ($diamonds as $diamond) {
@@ -867,6 +947,45 @@ class DiamondController extends Controller
                 }
             }
         }
+    }
+
+    /**
+     * Process multiple files upload using public disk storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  string  $type
+     * @param  array  $existingImages
+     * @param  array  $existingVideos
+     * @return array
+     */
+    private function processMultipleFileUploads(Request $request, string $type = 'diamonds', array $existingImages = [], array $existingVideos = []): array
+    {
+        $uploadedImages = $existingImages;
+        if ($request->hasFile('images')) {
+            foreach ($request->file('images') as $file) {
+                if ($file->isValid()) {
+                    $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                    $path = $file->storeAs("{$type}/images", $fileName, 'public');
+                    $uploadedImages[] = $path;
+                }
+            }
+        }
+
+        $uploadedVideos = $existingVideos;
+        if ($request->hasFile('videos')) {
+            foreach ($request->file('videos') as $file) {
+                if ($file->isValid()) {
+                    $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                    $path = $file->storeAs("{$type}/videos", $fileName, 'public');
+                    $uploadedVideos[] = $path;
+                }
+            }
+        }
+
+        return [
+            'images' => $uploadedImages,
+            'videos' => $uploadedVideos,
+        ];
     }
 }
 

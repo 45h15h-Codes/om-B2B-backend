@@ -20,8 +20,14 @@ class HomeController extends Controller
         $jewelryQuery = Jewelery::query();
 
         if (session('admin_role', 'normal_admin') !== 'super_admin') {
-            $diamondQuery->where('assigned_admin_id', Auth::id());
-            $jewelryQuery->where('assigned_admin_id', Auth::id());
+            $diamondQuery->where(function ($q) {
+                $q->where('assigned_admin_id', Auth::id())
+                  ->orWhere('user_id', Auth::id());
+            });
+            $jewelryQuery->where(function ($q) {
+                $q->where('assigned_admin_id', Auth::id())
+                  ->orWhere('user_id', Auth::id());
+            });
         }
 
         $diamondsCount = $diamondQuery->count();

@@ -1893,7 +1893,7 @@
                 </div>
                 
                 <!-- Bulk Actions & Tooling -->
-                @if(auth()->check() && auth()->user()->role === 'super_admin')
+                @if(auth()->check())
                     <div style="margin: 0; display: inline-block;">
                         <button type="button" id="bulk-delete-btn" class="toolbar-new-search-btn"
                             style="background-color: var(--error-color); color: white; border-color: var(--error-color); border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; height: 33px; opacity: 0.5; pointer-events: none;"
@@ -1984,7 +1984,9 @@
                             @endphp
                             <tr id="tr-main-{{ $diamond->id }}" style="cursor: pointer;" onclick="toggleRowDetails({{ $diamond->id }})">
                                 <td style="text-align: center;" onclick="event.stopPropagation();">
-                                    <input type="checkbox" name="ids[]" value="{{ $diamond->id }}" form="bulk-delete-form" class="diamond-checkbox" onchange="toggleBulkBtn()">
+                                    @can('delete', $diamond)
+                                        <input type="checkbox" name="ids[]" value="{{ $diamond->id }}" form="bulk-delete-form" class="diamond-checkbox" onchange="toggleBulkBtn()">
+                                    @endcan
                                 </td>
                                 <td>{{ $sellerName }}</td>
                                 <td>{{ $loc }}</td>
@@ -2109,6 +2111,8 @@
                                                         </button>
                                                     </form>
                                                 @endif
+                                            @endif
+                                            @can('delete', $diamond)
                                                 <form action="{{ route('diamonds.destroy', $diamond->id) }}" method="POST" style="display: inline-block;" class="confirm-delete-form" data-username="{{ $diamond->stock_no ?? $diamond->id }}">
                                                     @csrf
                                                     @method('DELETE')
@@ -2116,7 +2120,7 @@
                                                         <i class="fa-solid fa-trash"></i> Delete
                                                     </button>
                                                 </form>
-                                            @endif
+                                            @endcan
                                             <button class="btn btn-secondary" style="padding: 8px; font-size: 12px;">
                                                 <i class="fa-solid fa-ellipsis"></i>
                                             </button>

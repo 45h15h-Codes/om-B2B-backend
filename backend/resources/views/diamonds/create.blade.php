@@ -1201,32 +1201,45 @@
                     </div>
                 </div>
 
-                <!-- Diamond Image file upload -->
+                <!-- Diamond Images file upload -->
                 <div class="card-group">
-                    <div class="card-group-title">Diamond Image</div>
+                    <div class="card-group-title">Diamond Images</div>
                     
                     <div class="upload-zone-wrapper">
-                        <div class="upload-box" onclick="triggerImageUpload()">
-                            <i class="fa-solid fa-image upload-icon"></i>
-                            <span class="upload-btn-label">Browse</span>
-                            <span id="image_filename_lbl" style="font-size: 12px; color: var(--success-color); font-weight: 500;"></span>
+                        <div class="upload-box" onclick="document.getElementById('images_input').click()">
+                            <i class="fa-solid fa-images upload-icon"></i>
+                            <span class="upload-btn-label">Browse Images</span>
+                            <span id="images_lbl" style="font-size: 12px; color: var(--success-color); font-weight: 500;"></span>
+                            <input type="file" id="images_input" name="images[]" multiple accept="image/*" style="display: none;" onchange="showMultipleFilenames(this, 'images_lbl')">
                         </div>
                         
                         <span class="or-label" style="align-self: center;">or</span>
                         
                         <div class="upload-link-input">
-                            <label for="diamond_image_link">Upload Link</label>
+                            <label for="diamond_image_link">Legacy Single Image URL</label>
                             <input type="text" id="diamond_image_link" name="diamond_image_link" placeholder="Enter image URL" onchange="syncField(this)">
                         </div>
                     </div>
                 </div>
 
-                <!-- Sarine Loupe -->
+                <!-- Diamond Videos file upload -->
                 <div class="card-group">
-                    <div class="card-group-title">Sarine Loupe</div>
-                    <div class="form-group">
-                        <label for="sarine_loupe">Sarine Loupe Link</label>
-                        <input type="text" id="sarine_loupe" name="sarine_loupe" placeholder="Enter Loupe URL" onchange="syncField(this)">
+                    <div class="card-group-title">Diamond Videos</div>
+                    
+                    <div class="upload-zone-wrapper">
+                        <div class="upload-box" onclick="document.getElementById('videos_input').click()">
+                            <i class="fa-solid fa-video upload-icon"></i>
+                            <span class="upload-btn-label">Browse Videos</span>
+                            <span id="videos_lbl" style="font-size: 12px; color: var(--success-color); font-weight: 500;"></span>
+                            <input type="file" id="videos_input" name="videos[]" multiple accept="video/*" style="display: none;" onchange="showMultipleFilenames(this, 'videos_lbl')">
+                        </div>
+                        
+                        <span class="or-label" style="align-self: center;">or</span>
+                        
+                        <div class="upload-link-input">
+                            <label for="sarine_loupe">Legacy Single Video URL</label>
+                            <input type="text" id="sarine_loupe" name="sarine_loupe" placeholder="Enter video/loupe URL" onchange="syncField(this)">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1943,5 +1956,14 @@
             document.getElementById('diamonds-json-input').value = JSON.stringify(multipleDiamonds);
         }
     };
+
+    function showMultipleFilenames(fileInput, labelId) {
+        const label = document.getElementById(labelId);
+        if (fileInput.files.length > 0) {
+            label.textContent = `Selected: ${fileInput.files.length} file(s)`;
+        } else {
+            label.textContent = '';
+        }
+    }
 </script>
 @endsection

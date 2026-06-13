@@ -702,6 +702,10 @@
                 <i class="fa-solid fa-user-plus"></i>
                 <span>Add on User</span>
             </a>
+            <a href="{{ route('partnership-requests.index') }}" class="sidebar-item {{ Route::is('partnership-requests.*') ? 'active' : '' }}">
+                <i class="fa-solid fa-handshake"></i>
+                <span>Partnership Requests</span>
+            </a>
             @else
             <div class="sidebar-item" style="opacity: 0.5; cursor: not-allowed;" title="Super Admin Only">
                 <i class="fa-solid fa-user-plus"></i>
@@ -1168,6 +1172,12 @@
 
             @if(session('error'))
                 showToast("{{ str_replace('"', '\\"', session('error')) }}", 'error');
+            @endif
+
+            @if($errors->any())
+                @foreach($errors->all() as $error)
+                    showToast("{{ str_replace('"', '\\"', $error) }}", 'error');
+                @endforeach
             @endif
 
             // Global delete confirmation flow for forms with .confirm-delete-form

@@ -44,6 +44,9 @@ Route::get('/storefront/diamonds/{diamond}', [\App\Http\Controllers\Api\Storefro
 Route::get('/storefront/jewellery', [\App\Http\Controllers\Api\StorefrontJewelleryController::class, 'index'])
     ->name('api.storefront.jewellery.index');
 
+Route::get('/storefront/jewellery/categories', [\App\Http\Controllers\Api\StorefrontJewelleryController::class, 'categories'])
+    ->name('api.storefront.jewellery.categories');
+
 Route::get('/storefront/jewellery/filters', [\App\Http\Controllers\Api\StorefrontJewelleryController::class, 'filters'])
     ->name('api.storefront.jewellery.filters');
 
@@ -87,6 +90,9 @@ Route::prefix('v1')->group(function () {
     Route::get('/jewelry', [\App\Http\Controllers\Api\V1\CatalogController::class, 'jewelryIndex'])->name('api.jewelry.index');
     Route::get('/jewelry/{id}', [\App\Http\Controllers\Api\V1\CatalogController::class, 'jewelryShow'])->name('api.jewelry.show');
 
+    // Public B2B Partnership Inquiry Route
+    Route::post('/partnership-requests', [\App\Http\Controllers\Api\V1\PartnershipController::class, 'store'])->name('api.partnership-requests.store');
+
     // Customer Guest Auth
     Route::post('/register', [\App\Http\Controllers\Api\V1\CustomerAuthController::class, 'register'])->name('api.customer.register');
     Route::post('/login', [\App\Http\Controllers\Api\V1\CustomerAuthController::class, 'login'])->name('api.customer.login');
@@ -101,6 +107,14 @@ Route::prefix('v1')->group(function () {
         Route::post('/change-password', [\App\Http\Controllers\Api\V1\CustomerProfileController::class, 'changePassword'])->name('api.customer.change-password');
         Route::get('/orders', [\App\Http\Controllers\Api\V1\CustomerProfileController::class, 'orders'])->name('api.customer.orders');
     });
+});
+
+// Admin APIs for Partnership Requests (Super Admin role restricted in controller)
+Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
+    Route::get('/partnership-requests', [\App\Http\Controllers\PartnershipRequestController::class, 'apiIndex'])->name('api.admin.partnership-requests.index');
+    Route::get('/partnership-requests/{id}', [\App\Http\Controllers\PartnershipRequestController::class, 'apiShow'])->name('api.admin.partnership-requests.show');
+    Route::post('/partnership-requests/{id}/approve', [\App\Http\Controllers\PartnershipRequestController::class, 'apiApprove'])->name('api.admin.partnership-requests.approve');
+    Route::post('/partnership-requests/{id}/reject', [\App\Http\Controllers\PartnershipRequestController::class, 'apiReject'])->name('api.admin.partnership-requests.reject');
 });
 
 

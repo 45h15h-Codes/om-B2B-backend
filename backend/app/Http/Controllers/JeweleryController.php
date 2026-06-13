@@ -18,7 +18,10 @@ class JeweleryController extends Controller
         $query = Jewelery::query();
 
         if (session('admin_role', 'normal_admin') !== 'super_admin') {
-            $query->where('assigned_admin_id', Auth::id());
+            $query->where(function($q) {
+                $q->where('assigned_admin_id', Auth::id())
+                  ->orWhere('user_id', Auth::id());
+            });
         }
 
         if ($request->filled('inventory_status')) {
@@ -57,20 +60,39 @@ class JeweleryController extends Controller
      */
     public function store(Request $request)
     {
+        \Illuminate\Support\Facades\Log::info('JeweleryController@store initiated', ['request' => $request->all()]);
+
         if (session('admin_role', 'normal_admin') === 'super_admin') {
+            \Illuminate\Support\Facades\Log::info('store - Unauthorized: Super Admin role check triggered');
             return redirect()->route('jewelery.index')->with('error', 'Unauthorized: Super Admin cannot upload jewelry.');
         }
 
-        $request->validate([
-            'sku' => 'required|string|max:100',
-            'name' => 'required|string|max:255',
-            'type' => 'required|string',
-            'price' => 'required|numeric|min:0',
-            'location' => 'required|string',
-            'image_file' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120'
-        ]);
+        try {
+            \Illuminate\Support\Facades\Log::info('store - Before validation');
+            $request->validate([
+                'sku' => 'required|string|max:100',
+                'name' => 'required|string|max:255',
+                'type' => 'required|string',
+                'price' => 'required|numeric|min:0',
+                'location' => 'required|string',
+                'image_file' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+                'images' => 'nullable|array',
+                'images.*' => 'file|mimes:jpg,jpeg,png,webp|max:10240',
+                'videos' => 'nullable|array',
+                'videos.*' => 'file|mimes:mp4,mov,avi|max:51200',
+            ]);
+            \Illuminate\Support\Facades\Log::info('store - After validation passed');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Illuminate\Support\Facades\Log::error('store - Validation failed', ['errors' => $e->errors()]);
+            throw $e;
+        }
 
-        $data = $request->except(['_token', 'image_file']);
+        if (!$request->hasFile('image_file') && (!$request->hasFile('images') || count($request->file('images')) === 0)) {
+            \Illuminate\Support\Facades\Log::warning('store - Image check failed: no images uploaded');
+            return redirect()->back()->withInput()->withErrors(['image_file' => 'An image is required.']);
+        }
+
+        $data = $request->except(['_token', 'image_file', 'images', 'videos']);
         $role = session('admin_role', 'normal_admin');
         $data['created_by'] = $role === 'super_admin' ? 'Super Admin' : 'Normal Admin';
         $data['status'] = $role === 'super_admin' ? 'Approved' : 'Pending';
@@ -98,7 +120,24 @@ class JeweleryController extends Controller
             }
         }
 
-        Jewelery::create($data);
+        // Process multiple files upload
+        $media = $this->processMultipleFileUploads($request, 'jewelleries');
+        $data['images'] = $media['images'];
+        $data['videos'] = $media['videos'];
+
+        // If image_url is not set but we have images, populate image_url with the first image path
+        if (empty($data['image_url']) && count($media['images']) > 0) {
+            $data['image_url'] = 'storage/' . $media['images'][0];
+        }
+
+        try {
+            \Illuminate\Support\Facades\Log::info('store - Before save', ['data' => $data]);
+            Jewelery::create($data);
+            \Illuminate\Support\Facades\Log::info('store - After save success');
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('store - Save failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            throw $e;
+        }
 
         $message = 'Jewelery item uploaded successfully' . ($role !== 'super_admin' ? ' and is awaiting Super Admin approval.' : '.');
         return redirect()->route('jewelery.index')->with('success', $message);
@@ -272,10 +311,18 @@ class JeweleryController extends Controller
             'type' => 'required|string',
             'price' => 'required|numeric|min:0',
             'location' => 'required|string',
-            'image_file' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120'
+            'image_file' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+            'images' => 'nullable|array',
+            'images.*' => 'file|mimes:jpg,jpeg,png,webp|max:10240',
+            'videos' => 'nullable|array',
+            'videos.*' => 'file|mimes:mp4,mov,avi|max:51200',
+            'remove_images' => 'nullable|array',
+            'remove_images.*' => 'string',
+            'remove_videos' => 'nullable|array',
+            'remove_videos.*' => 'string',
         ]);
 
-        $data = $request->except(['_token', '_method', 'image_file']);
+        $data = $request->except(['_token', '_method', 'image_file', 'images', 'videos', 'remove_images', 'remove_videos']);
 
         // Checkbox conversions to booleans
         $data['is_available'] = $request->has('is_available');
@@ -301,6 +348,40 @@ class JeweleryController extends Controller
                 \Illuminate\Support\Facades\Storage::disk('public_uploads')->putFileAs('images/jewelery', $file, $fileName);
                 $data['image_url'] = 'images/jewelery/' . $fileName;
             }
+        }
+
+        // Handle image removals & merges
+        $existingImages = $jewelery->images ?? [];
+        if ($request->has('remove_images')) {
+            foreach ($request->input('remove_images') as $removePath) {
+                if (($key = array_search($removePath, $existingImages)) !== false) {
+                    unset($existingImages[$key]);
+                    \Illuminate\Support\Facades\Storage::disk('public')->delete($removePath);
+                }
+            }
+            $existingImages = array_values($existingImages);
+        }
+
+        // Handle video removals & merges
+        $existingVideos = $jewelery->videos ?? [];
+        if ($request->has('remove_videos')) {
+            foreach ($request->input('remove_videos') as $removePath) {
+                if (($key = array_search($removePath, $existingVideos)) !== false) {
+                    unset($existingVideos[$key]);
+                    \Illuminate\Support\Facades\Storage::disk('public')->delete($removePath);
+                }
+            }
+            $existingVideos = array_values($existingVideos);
+        }
+
+        // Handle new uploads
+        $media = $this->processMultipleFileUploads($request, 'jewelleries', $existingImages, $existingVideos);
+        $data['images'] = $media['images'];
+        $data['videos'] = $media['videos'];
+
+        // Sync image_url if it's currently empty but we now have images
+        if (empty($data['image_url']) && empty($jewelery->image_url) && count($media['images']) > 0) {
+            $data['image_url'] = 'storage/' . $media['images'][0];
         }
 
         // Set status to pending if normal admin updates, or approved if super admin
@@ -431,5 +512,44 @@ class JeweleryController extends Controller
                 @unlink($fullPath);
             }
         }
+    }
+
+    /**
+     * Process multiple files upload using public disk storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  string  $type
+     * @param  array  $existingImages
+     * @param  array  $existingVideos
+     * @return array
+     */
+    private function processMultipleFileUploads(Request $request, string $type = 'jewelleries', array $existingImages = [], array $existingVideos = []): array
+    {
+        $uploadedImages = $existingImages;
+        if ($request->hasFile('images')) {
+            foreach ($request->file('images') as $file) {
+                if ($file->isValid()) {
+                    $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                    $path = $file->storeAs("{$type}/images", $fileName, 'public');
+                    $uploadedImages[] = $path;
+                }
+            }
+        }
+
+        $uploadedVideos = $existingVideos;
+        if ($request->hasFile('videos')) {
+            foreach ($request->file('videos') as $file) {
+                if ($file->isValid()) {
+                    $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                    $path = $file->storeAs("{$type}/videos", $fileName, 'public');
+                    $uploadedVideos[] = $path;
+                }
+            }
+        }
+
+        return [
+            'images' => $uploadedImages,
+            'videos' => $uploadedVideos,
+        ];
     }
 }

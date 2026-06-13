@@ -93,13 +93,13 @@ class StorefrontNavigationTest extends TestCase
 
         // Sorting: Bracelet, Necklace, Ring
         $this->assertEquals('Bracelet', $jewelryChildren[0]['title']);
-        $this->assertEquals('/jewelry?type=Bracelet', $jewelryChildren[0]['url']);
+        $this->assertEquals('/jewelry?category=bracelet', $jewelryChildren[0]['url']);
         
         $this->assertEquals('Necklace', $jewelryChildren[1]['title']);
-        $this->assertEquals('/jewelry?type=Necklace', $jewelryChildren[1]['url']);
+        $this->assertEquals('/jewelry?category=necklace', $jewelryChildren[1]['url']);
         
         $this->assertEquals('Ring', $jewelryChildren[2]['title']);
-        $this->assertEquals('/jewelry?type=Ring', $jewelryChildren[2]['url']);
+        $this->assertEquals('/jewelry?category=ring', $jewelryChildren[2]['url']);
 
         // Assert dynamic compound IDs are present
         foreach ($jewelryChildren as $child) {

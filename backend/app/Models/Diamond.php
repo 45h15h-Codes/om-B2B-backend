@@ -70,6 +70,7 @@ class Diamond extends Model
         'color',
         'clarity',
         'show_on_OM',
+        'customer_website_report_no',
         'is_matched_pair',
         'is_parcel',
         'number_of_diamonds',
@@ -90,6 +91,8 @@ class Diamond extends Model
         'sold_order_number',
         'sold_order_date',
         'specifications',
+        'images',
+        'videos',
     ];
 
     /**
@@ -152,6 +155,8 @@ class Diamond extends Model
 
     protected $casts = [
         'specifications' => 'array',
+        'images' => 'array',
+        'videos' => 'array',
         'show_on_OM' => 'boolean',
         'is_matched_pair' => 'boolean',
         'is_parcel' => 'boolean',
@@ -327,6 +332,23 @@ class Diamond extends Model
 
     protected static function booted()
     {
+        static::saving(function ($diamond) {
+            $reportNo = trim($diamond->report_no ?? '');
+            if ($diamond->show_on_OM && !empty($reportNo)) {
+                $diamond->customer_website_report_no = $reportNo;
+
+                // Application-level race condition protection
+                $exists = self::where('customer_website_report_no', $reportNo)
+                    ->where('id', '!=', $diamond->id ?? 0)
+                    ->exists();
+                if ($exists) {
+                    throw new \Exception("Diamond is already uploaded.");
+                }
+            } else {
+                $diamond->customer_website_report_no = null;
+            }
+        });
+
         static::created(function ($diamond) {
             \App\Services\AuditService::log(
                 'create_diamond',

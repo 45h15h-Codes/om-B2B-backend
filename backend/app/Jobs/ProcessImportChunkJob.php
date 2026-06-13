@@ -151,6 +151,18 @@ class ProcessImportChunkJob implements ShouldQueue
         $fillableData['user_id'] = $this->userId;
         $fillableData['assigned_admin_id'] = $this->userId;
 
+        // Check if unique customer website diamond already exists
+        $showOnOM = !empty($fillableData['show_on_OM']);
+        $reportNo = isset($fillableData['report_no']) ? trim($fillableData['report_no']) : '';
+        if ($showOnOM && !empty($reportNo)) {
+            $exists = Diamond::where('customer_website_report_no', $reportNo)
+                ->where('stock_no', '!=', $record['stock_no'])
+                ->exists();
+            if ($exists) {
+                throw new \Exception("Diamond is already uploaded.");
+            }
+        }
+
         // Check if diamond with this stock number already exists
         $existingDiamond = Diamond::where('stock_no', $record['stock_no'])->first();
         if ($existingDiamond) {

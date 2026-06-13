@@ -34,6 +34,8 @@ class Jewelery extends Model
         'status',
         'inventory_status',
         'specifications',
+        'images',
+        'videos',
     ];
 
     /**
@@ -81,6 +83,8 @@ class Jewelery extends Model
 
     protected $casts = [
         'specifications' => 'array',
+        'images' => 'array',
+        'videos' => 'array',
         'price' => 'decimal:2',
         'user_id' => 'integer',
         'assigned_admin_id' => 'integer',

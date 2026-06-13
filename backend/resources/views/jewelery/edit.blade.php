@@ -266,12 +266,12 @@
                 <div class="form-section-card-title">Price & Location</div>
                 <div class="form-row-multi">
                     <div class="form-group">
-                        <label for="shipping_from">Shipping From</label>
-                        <select name="shipping_from" class="form-input">
+                        <label for="location">Shipping From</label>
+                        <select name="location" class="form-input">
                             <option value="">Select location</option>
-                            <option value="London" {{ old('shipping_from', $jewelery->shipping_from) === 'London' ? 'selected' : '' }}>London, United Kingdom</option>
-                            <option value="Surat" {{ old('shipping_from', $jewelery->shipping_from) === 'Surat' ? 'selected' : '' }}>Surat, India</option>
-                            <option value="New York" {{ old('shipping_from', $jewelery->shipping_from) === 'New York' ? 'selected' : '' }}>New York, USA</option>
+                            <option value="London" {{ old('location', $jewelery->location) === 'London' ? 'selected' : '' }}>London, United Kingdom</option>
+                            <option value="Surat" {{ old('location', $jewelery->location) === 'Surat' ? 'selected' : '' }}>Surat, India</option>
+                            <option value="New York" {{ old('location', $jewelery->location) === 'New York' ? 'selected' : '' }}>New York, USA</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -453,24 +453,76 @@
             </div>
         </div>
 
-        <!-- Product Image Section -->
+        <!-- Product Images Section -->
         <div class="form-section-card" style="max-width: 500px; margin: 0 auto 24px auto;">
-            <div class="form-section-card-title">Product Image Update</div>
-            <div style="text-align: center; margin-bottom: 12px;">
-                <p style="font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Current Image Preview:</p>
-                @if(str_starts_with($jewelery->image_url, 'http'))
-                    <img src="{{ $jewelery->image_url }}" alt="{{ $jewelery->name }}" style="max-height: 120px; object-fit: contain; border-radius: 8px; border: 1px solid var(--border-color); padding: 4px; background: #fff;">
-                @else
-                    <img src="{{ asset($jewelery->image_url) }}" alt="{{ $jewelery->name }}" style="max-height: 120px; object-fit: contain; border-radius: 8px; border: 1px solid var(--border-color); padding: 4px; background: #fff;">
-                @endif
-            </div>
+            <div class="form-section-card-title">Product Images</div>
+            
+            @if($jewelery->images && count($jewelery->images) > 0)
+                <div class="existing-media-gallery" style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding: 10px; background: #fff; border: 1px solid var(--border-color); border-radius: 8px; justify-content: center;">
+                    @foreach($jewelery->images as $img)
+                        <div class="media-item" style="position: relative; width: 80px; text-align: center;">
+                            <img src="{{ (str_starts_with($img, 'http://') || str_starts_with($img, 'https://')) ? $img : asset('storage/' . $img) }}" style="width: 70px; height: 70px; object-fit: contain; border-radius: 6px; border: 1px solid var(--border-color);">
+                            <label style="display: block; font-size: 11px; margin-top: 4px; color: var(--error-color); cursor: pointer; font-weight: 700;">
+                                <input type="checkbox" name="remove_images[]" value="{{ $img }}"> Remove
+                            </label>
+                        </div>
+                    @endforeach
+                </div>
+            @elseif(!empty($jewelery->image_url))
+                <div style="text-align: center; margin-bottom: 12px;">
+                    <p style="font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px;">Legacy Image Preview:</p>
+                    <img src="{{ str_starts_with($jewelery->image_url, 'http') ? $jewelery->image_url : asset($jewelery->image_url) }}" style="max-height: 100px; object-fit: contain; border-radius: 8px; border: 1px solid var(--border-color); padding: 4px; background: #fff;">
+                </div>
+            @endif
+
             <div class="form-group">
-                <label for="image_file">Replace Image (Optional)</label>
-                <div class="file-input-wrapper" onclick="triggerImageFileSelect()">
-                    <i class="fa-solid fa-cloud-arrow-up" style="font-size: 24px; color: var(--primary-color); margin-bottom: 8px;"></i>
-                    <h5 style="font-size: 13px; font-weight: 700; color: var(--text-color); margin-bottom: 2px;" id="file-label-title">Choose New File</h5>
-                    <p style="font-size: 11px; color: var(--text-muted);" id="file-label-name">Supports JPEG, PNG, JPG, WEBP (Max 5MB)</p>
+                <label for="images_input">Upload Additional Images</label>
+                <div class="file-input-wrapper" onclick="document.getElementById('images_input').click()">
+                    <i class="fa-solid fa-images" style="font-size: 24px; color: var(--primary-color); margin-bottom: 8px;"></i>
+                    <h5 style="font-size: 13px; font-weight: 700; color: var(--text-color); margin-bottom: 2px;" id="images-label-title">Choose Images</h5>
+                    <p style="font-size: 11px; color: var(--text-muted);" id="images-label-name">Supports JPEG, PNG, JPG, WEBP (Max 10MB per image)</p>
+                    <input type="file" id="images_input" name="images[]" multiple accept="image/*" style="display: none;" onchange="handleMultipleImagesChange(this)">
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 10px 0;">
+                <span style="font-size: 11px; font-weight: 700; color: var(--text-muted);">or replace legacy single image:</span>
+            </div>
+
+            <div class="form-group">
+                <div class="file-input-wrapper" onclick="triggerImageFileSelect()" style="padding: 16px;">
+                    <i class="fa-solid fa-cloud-arrow-up" style="font-size: 20px; color: var(--primary-color); margin-bottom: 6px;"></i>
+                    <h5 style="font-size: 12px; font-weight: 700; color: var(--text-color); margin-bottom: 2px;" id="file-label-title">Choose Single File</h5>
+                    <p style="font-size: 10px; color: var(--text-muted);" id="file-label-name">Supports JPEG, PNG, JPG, WEBP (Max 5MB)</p>
                     <input type="file" id="image_file" name="image_file" accept="image/*" style="display: none;" onchange="handleImageFileChange(this)">
+                </div>
+            </div>
+        </div>
+
+        <!-- Product Videos Section -->
+        <div class="form-section-card" style="max-width: 500px; margin: 0 auto 24px auto;">
+            <div class="form-section-card-title">Product Videos</div>
+
+            @if($jewelery->videos && count($jewelery->videos) > 0)
+                <div class="existing-media-gallery" style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding: 10px; background: #fff; border: 1px solid var(--border-color); border-radius: 8px; justify-content: center;">
+                    @foreach($jewelery->videos as $vid)
+                        <div class="media-item" style="position: relative; width: 120px; text-align: center;">
+                            <video src="{{ (str_starts_with($vid, 'http://') || str_starts_with($vid, 'https://')) ? $vid : asset('storage/' . $vid) }}" controls style="width: 110px; height: 70px; object-fit: contain; border-radius: 6px; border: 1px solid var(--border-color);"></video>
+                            <label style="display: block; font-size: 11px; margin-top: 4px; color: var(--error-color); cursor: pointer; font-weight: 700;">
+                                <input type="checkbox" name="remove_videos[]" value="{{ $vid }}"> Remove
+                            </label>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            <div class="form-group">
+                <label for="videos_input">Upload Additional Videos</label>
+                <div class="file-input-wrapper" onclick="document.getElementById('videos_input').click()">
+                    <i class="fa-solid fa-video" style="font-size: 24px; color: var(--primary-color); margin-bottom: 8px;"></i>
+                    <h5 style="font-size: 13px; font-weight: 700; color: var(--text-color); margin-bottom: 2px;" id="videos-label-title">Choose Videos</h5>
+                    <p style="font-size: 11px; color: var(--text-muted);" id="videos-label-name">Supports MP4, MOV, AVI (Max 50MB per video)</p>
+                    <input type="file" id="videos_input" name="videos[]" multiple accept="video/*" style="display: none;" onchange="handleMultipleVideosChange(this)">
                 </div>
             </div>
         </div>
@@ -501,6 +553,40 @@
         } else {
             title.textContent = "Choose New File";
             name.textContent = "Supports JPEG, PNG, JPG, WEBP (Max 5MB)";
+            name.style.color = "";
+            name.style.fontWeight = "";
+        }
+    }
+
+    function handleMultipleImagesChange(input) {
+        const title = document.getElementById('images-label-title');
+        const name = document.getElementById('images-label-name');
+
+        if (input.files.length > 0) {
+            title.textContent = "Selected Images";
+            name.textContent = `Selected: ${input.files.length} file(s)`;
+            name.style.color = "var(--primary-color)";
+            name.style.fontWeight = "bold";
+        } else {
+            title.textContent = "Choose Images";
+            name.textContent = "Supports JPEG, PNG, JPG, WEBP (Max 10MB per image)";
+            name.style.color = "";
+            name.style.fontWeight = "";
+        }
+    }
+
+    function handleMultipleVideosChange(input) {
+        const title = document.getElementById('videos-label-title');
+        const name = document.getElementById('videos-label-name');
+
+        if (input.files.length > 0) {
+            title.textContent = "Selected Videos";
+            name.textContent = `Selected: ${input.files.length} file(s)`;
+            name.style.color = "var(--primary-color)";
+            name.style.fontWeight = "bold";
+        } else {
+            title.textContent = "Choose Videos";
+            name.textContent = "Supports MP4, MOV, AVI (Max 50MB per video)";
             name.style.color = "";
             name.style.fontWeight = "";
         }

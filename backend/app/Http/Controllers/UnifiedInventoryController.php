@@ -68,6 +68,7 @@ class UnifiedInventoryController extends Controller
         // Base Diamond query
         $diamonds = DB::table('diamonds')
             ->leftJoin('users as admins', 'diamonds.assigned_admin_id', '=', 'admins.id')
+            ->leftJoin('users as uploaders', 'diamonds.user_id', '=', 'uploaders.id')
             ->select([
                 'diamonds.id',
                 'diamonds.stock_no',
@@ -84,6 +85,8 @@ class UnifiedInventoryController extends Controller
                 'diamonds.hold_reason',
                 'diamonds.hold_at',
                 'diamonds.created_at',
+                'diamonds.user_id',
+                'uploaders.role as uploader_role',
                 DB::raw('(' . $diamondMappingCount->toSql() . ') as store_mapping_count'),
                 DB::raw('(' . $diamondFailedCount->toSql() . ') as failed_mapping_count')
             ]);
@@ -93,6 +96,7 @@ class UnifiedInventoryController extends Controller
         // Base Jewelry query
         $jewelry = DB::table('jeweleries')
             ->leftJoin('users as admins', 'jeweleries.assigned_admin_id', '=', 'admins.id')
+            ->leftJoin('users as uploaders', 'jeweleries.user_id', '=', 'uploaders.id')
             ->select([
                 'jeweleries.id',
                 'jeweleries.sku as stock_no',
@@ -109,6 +113,8 @@ class UnifiedInventoryController extends Controller
                 'jeweleries.hold_reason',
                 'jeweleries.hold_at',
                 'jeweleries.created_at',
+                'jeweleries.user_id',
+                'uploaders.role as uploader_role',
                 DB::raw('(' . $jewelryMappingCount->toSql() . ') as store_mapping_count'),
                 DB::raw('(' . $jewelryFailedCount->toSql() . ') as failed_mapping_count')
             ]);

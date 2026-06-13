@@ -1084,37 +1084,71 @@
                     </div>
                 </div>
 
-                <!-- Diamond Image file upload -->
-                <div class="card-group">
-                    <div class="card-group-title">Diamond Image</div>
+                <!-- Diamond Images Upload and Management -->
+                <div class="card-group" style="grid-column: span 2;">
+                    <div class="card-group-title">Diamond Images</div>
                     
+                    @if($diamond->images && count($diamond->images) > 0)
+                        <div class="existing-media-gallery" style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; padding: 12px; background: #fff; border: 1px solid var(--border-color); border-radius: 8px;">
+                            @foreach($diamond->images as $img)
+                                <div class="media-item" style="position: relative; width: 100px; text-align: center;">
+                                    <img src="{{ (str_starts_with($img, 'http://') || str_starts_with($img, 'https://')) ? $img : asset('storage/' . $img) }}" style="width: 80px; height: 80px; object-fit: contain; border-radius: 6px; border: 1px solid var(--border-color);">
+                                    <label style="display: block; font-size: 11px; margin-top: 4px; color: var(--error-color); cursor: pointer; font-weight: 700;">
+                                        <input type="checkbox" name="remove_images[]" value="{{ $img }}"> Remove
+                                    </label>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+
                     <div class="upload-zone-wrapper">
-                        <!-- Custom file Browse -->
-                        <div class="upload-box" onclick="document.getElementById('diamond_image_input').click()">
-                            <i class="fa-solid fa-image upload-icon"></i>
-                            <span class="upload-btn-label">Browse</span>
-                            <span id="image_filename_lbl" style="font-size: 12px; color: var(--success-color); font-weight: 500;">
-                                @if($diamond->diamond_image) Selected: {{ str_contains($diamond->diamond_image, 'cloudinary') ? 'Cloudinary Image' : basename($diamond->diamond_image) }} @endif
-                            </span>
-                            <input type="file" id="diamond_image_input" name="diamond_image" style="display: none;" onchange="showFilename(this, 'image_filename_lbl')">
+                        <div class="upload-box" onclick="document.getElementById('images_input').click()">
+                            <i class="fa-solid fa-images upload-icon"></i>
+                            <span class="upload-btn-label">Browse Additional Images</span>
+                            <span id="images_lbl" style="font-size: 12px; color: var(--success-color); font-weight: 500;"></span>
+                            <input type="file" id="images_input" name="images[]" multiple accept="image/*" style="display: none;" onchange="showMultipleFilenames(this, 'images_lbl')">
                         </div>
                         
                         <span class="or-label" style="align-self: center;">or</span>
                         
-                        <!-- Link upload -->
                         <div class="upload-link-input">
-                            <label for="diamond_image_link">Upload Link</label>
-                            <input type="text" id="diamond_image_link" name="diamond_image_link" value="{{ $diamond->diamond_image_link }}" placeholder="Enter URL/Link to diamond image">
+                            <label for="diamond_image_link">Legacy Single Image URL</label>
+                            <input type="text" id="diamond_image_link" name="diamond_image_link" value="{{ $diamond->diamond_image_link }}" placeholder="Enter image URL">
                         </div>
                     </div>
                 </div>
 
-                <!-- Sarine Loupe -->
-                <div class="card-group">
-                    <div class="card-group-title">Sarine Loupe</div>
-                    <div class="form-group">
-                        <label for="sarine_loupe">Sarine Loupe Link</label>
-                        <input type="text" id="sarine_loupe" name="sarine_loupe" value="{{ $diamond->sarine_loupe }}" placeholder="Enter sarine loupe path or link">
+                <!-- Diamond Videos Upload and Management -->
+                <div class="card-group" style="grid-column: span 2;">
+                    <div class="card-group-title">Diamond Videos</div>
+                    
+                    @if($diamond->videos && count($diamond->videos) > 0)
+                        <div class="existing-media-gallery" style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; padding: 12px; background: #fff; border: 1px solid var(--border-color); border-radius: 8px;">
+                            @foreach($diamond->videos as $vid)
+                                <div class="media-item" style="position: relative; width: 150px; text-align: center;">
+                                    <video src="{{ (str_starts_with($vid, 'http://') || str_starts_with($vid, 'https://')) ? $vid : asset('storage/' . $vid) }}" controls style="width: 140px; height: 80px; object-fit: contain; border-radius: 6px; border: 1px solid var(--border-color);"></video>
+                                    <label style="display: block; font-size: 11px; margin-top: 4px; color: var(--error-color); cursor: pointer; font-weight: 700;">
+                                        <input type="checkbox" name="remove_videos[]" value="{{ $vid }}"> Remove
+                                    </label>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    <div class="upload-zone-wrapper">
+                        <div class="upload-box" onclick="document.getElementById('videos_input').click()">
+                            <i class="fa-solid fa-video upload-icon"></i>
+                            <span class="upload-btn-label">Browse Additional Videos</span>
+                            <span id="videos_lbl" style="font-size: 12px; color: var(--success-color); font-weight: 500;"></span>
+                            <input type="file" id="videos_input" name="videos[]" multiple accept="video/*" style="display: none;" onchange="showMultipleFilenames(this, 'videos_lbl')">
+                        </div>
+                        
+                        <span class="or-label" style="align-self: center;">or</span>
+                        
+                        <div class="upload-link-input">
+                            <label for="sarine_loupe">Legacy Single Video URL</label>
+                            <input type="text" id="sarine_loupe" name="sarine_loupe" value="{{ $diamond->sarine_loupe }}" placeholder="Enter video/loupe URL">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1458,6 +1492,15 @@
         const label = document.getElementById(labelId);
         if (fileInput.files.length > 0) {
             label.textContent = `Selected: ${fileInput.files[0].name}`;
+        } else {
+            label.textContent = '';
+        }
+    }
+
+    function showMultipleFilenames(fileInput, labelId) {
+        const label = document.getElementById(labelId);
+        if (fileInput.files.length > 0) {
+            label.textContent = `Selected: ${fileInput.files.length} file(s)`;
         } else {
             label.textContent = '';
         }

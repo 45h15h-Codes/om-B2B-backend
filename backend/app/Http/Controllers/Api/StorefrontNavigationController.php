@@ -35,7 +35,7 @@ class StorefrontNavigationController extends Controller
             return [
                 'id' => $option->id,
                 'title' => $option->name,
-                'url' => '/jewelry?type=' . urlencode($option->name),
+                'url' => '/jewelry?category=' . urlencode(\Illuminate\Support\Str::slug($option->name)),
                 'metadata' => [
                     'image' => $option->image,
                     'group' => $option->group,

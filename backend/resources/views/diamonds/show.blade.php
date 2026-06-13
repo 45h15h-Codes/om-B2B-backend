@@ -296,11 +296,11 @@
     </a>
     
     <div style="display: flex; gap: 10px;">
-        @if($isAdmin || $diamond->user_id === Auth::id())
+        @can('edit', $diamond)
             <a href="{{ route('diamonds.edit', $diamond->id) }}" class="btn btn-primary" style="text-decoration: none; display: flex; align-items: center; gap: 8px; padding: 10px 20px;">
                 <i class="fa-solid fa-pen-to-square"></i> Edit Specifications
             </a>
-        @endif
+        @endcan
         
         @if($isAdmin)
             @if($diamond->status !== 'Approved')
@@ -318,6 +318,9 @@
                     </button>
                 </form>
             @endif
+        @endif
+
+        @can('delete', $diamond)
             <form action="{{ route('diamonds.destroy', $diamond->id) }}" method="POST" style="display: inline-block;" class="confirm-delete-form" data-username="{{ $diamond->stock_no ?? $diamond->id }}">
                 @csrf
                 @method('DELETE')
@@ -325,7 +328,7 @@
                     <i class="fa-solid fa-trash"></i> Delete
                 </button>
             </form>
-        @endif
+        @endcan
     </div>
 </div>
 

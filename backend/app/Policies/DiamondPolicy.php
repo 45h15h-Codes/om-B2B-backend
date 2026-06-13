@@ -44,18 +44,25 @@ class DiamondPolicy
     {
         $role = $this->getActiveRole($user);
         if ($role === 'super_admin') {
+            if ($diamond->user && $diamond->user->role === 'normal_admin') {
+                return false;
+            }
             return true;
         }
 
-        // Normal Admin: can edit if assigned or owned
-        return (int)$diamond->assigned_admin_id === (int)$user->id || 
-               (int)$diamond->user_id === (int)$user->id;
+        // Normal Admin: can edit/update only if uploaded by themselves
+        return (int)$diamond->user_id === (int)$user->id;
     }
 
     public function delete(User $user, Diamond $diamond): bool
     {
-        // Only Super Admin can delete items
-        return $this->getActiveRole($user) === 'super_admin';
+        $role = $this->getActiveRole($user);
+        if ($role === 'super_admin') {
+            return true;
+        }
+
+        // Normal Admin: can delete only if uploaded by themselves
+        return (int)$diamond->user_id === (int)$user->id;
     }
 
     public function publish(User $user, Diamond $diamond): bool

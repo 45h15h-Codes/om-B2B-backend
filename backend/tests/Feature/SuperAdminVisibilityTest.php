@@ -328,4 +328,45 @@ class SuperAdminVisibilityTest extends TestCase
         $response->assertSee('DIAMOND-A');
         $response->assertDontSee('DIAMOND-B');
     }
+
+    /**
+     * Assert normal admin can see their own uploaded jewelry (where user_id is their ID)
+     * even if assigned_admin_id is null and status is Pending.
+     */
+    public function test_normal_admin_can_see_own_uploaded_jewelery()
+    {
+        $adminA = $this->getAdminUser('normal_admin', 'admina@omgems.com');
+        $adminB = $this->getAdminUser('normal_admin', 'adminb@omgems.com');
+
+        $jewelryA = Jewelery::create([
+            'sku' => 'JW-OWN-A',
+            'name' => 'Admin A Owned Ring',
+            'type' => 'Ring',
+            'price' => 1500,
+            'location' => 'London',
+            'user_id' => $adminA->id,
+            'assigned_admin_id' => null,
+            'status' => 'Pending',
+        ]);
+
+        $jewelryB = Jewelery::create([
+            'sku' => 'JW-OWN-B',
+            'name' => 'Admin B Owned Ring',
+            'type' => 'Ring',
+            'price' => 2500,
+            'location' => 'London',
+            'user_id' => $adminB->id,
+            'assigned_admin_id' => null,
+            'status' => 'Pending',
+        ]);
+
+        // Acting as admin A, we should see JW-OWN-A but not JW-OWN-B
+        $response = $this->actingAs($adminA)
+            ->withSession(['admin_role' => 'normal_admin'])
+            ->get('/jewelery');
+
+        $response->assertStatus(200);
+        $response->assertSee('JW-OWN-A');
+        $response->assertDontSee('JW-OWN-B');
+    }
 }

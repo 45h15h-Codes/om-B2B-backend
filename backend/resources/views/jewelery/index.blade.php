@@ -1229,8 +1229,8 @@
                         <div class="form-section-card-title">Price & Location</div>
                         <div class="form-row-multi">
                             <div class="form-group">
-                                <label for="shipping_from">Shipping From</label>
-                                <select name="shipping_from" class="form-input">
+                                <label for="location">Shipping From</label>
+                                <select name="location" class="form-input">
                                     <option value="">Select location</option>
                                     <option value="London" selected>London, United Kingdom</option>
                                     <option value="Surat">Surat, India</option>
@@ -1434,15 +1434,43 @@
 
             <!-- STEP 2: REPORT INFORMATION -->
             <div id="step-panel-2" class="step-pane" style="display: none;">
+                <!-- Product Images Upload -->
                 <div class="form-section-card" style="max-width: 500px; margin: 0 auto 24px auto;">
-                    <div class="form-section-card-title">Product Image Upload</div>
+                    <div class="form-section-card-title">Product Images</div>
                     <div class="form-group">
-                        <label for="image_file">Upload Image</label>
-                        <div class="file-input-wrapper" onclick="triggerImageFileSelect()">
-                            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 32px; color: var(--primary-color); margin-bottom: 12px;"></i>
-                            <h5 style="font-size: 13px; font-weight: 700; color: var(--text-color); margin-bottom: 4px;" id="file-label-title">Choose File</h5>
-                            <p style="font-size: 11px; color: var(--text-muted);" id="file-label-name">Supports JPEG, PNG, JPG, WEBP (Max 5MB)</p>
-                            <input type="file" id="image_file" name="image_file" accept="image/*" style="display: none;" onchange="handleImageFileChange(this)" required>
+                        <label for="images_input">Upload Multiple Images</label>
+                        <div class="file-input-wrapper" onclick="document.getElementById('images_input').click()">
+                            <i class="fa-solid fa-images" style="font-size: 32px; color: var(--primary-color); margin-bottom: 12px;"></i>
+                            <h5 style="font-size: 13px; font-weight: 700; color: var(--text-color); margin-bottom: 4px;" id="images-label-title">Choose Images</h5>
+                            <p style="font-size: 11px; color: var(--text-muted);" id="images-label-name">Supports JPEG, PNG, JPG, WEBP (Max 10MB per image)</p>
+                            <input type="file" id="images_input" name="images[]" multiple accept="image/*" style="display: none;" onchange="handleMultipleImagesChange(this)">
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center; margin: 10px 0;">
+                        <span style="font-size: 12px; font-weight: 700; color: var(--text-muted);">or upload a legacy single image:</span>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="file-input-wrapper" onclick="triggerImageFileSelect()" style="padding: 16px;">
+                            <i class="fa-solid fa-cloud-arrow-up" style="font-size: 20px; color: var(--primary-color); margin-bottom: 6px;"></i>
+                            <h5 style="font-size: 12px; font-weight: 700; color: var(--text-color); margin-bottom: 2px;" id="file-label-title">Choose Single File</h5>
+                            <p style="font-size: 10px; color: var(--text-muted);" id="file-label-name">Supports JPEG, PNG, JPG, WEBP (Max 5MB)</p>
+                            <input type="file" id="image_file" name="image_file" accept="image/*" style="display: none;" onchange="handleImageFileChange(this)">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Product Videos Upload -->
+                <div class="form-section-card" style="max-width: 500px; margin: 0 auto 24px auto;">
+                    <div class="form-section-card-title">Product Videos</div>
+                    <div class="form-group">
+                        <label for="videos_input">Upload Multiple Videos</label>
+                        <div class="file-input-wrapper" onclick="document.getElementById('videos_input').click()">
+                            <i class="fa-solid fa-video" style="font-size: 32px; color: var(--primary-color); margin-bottom: 12px;"></i>
+                            <h5 style="font-size: 13px; font-weight: 700; color: var(--text-color); margin-bottom: 4px;" id="videos-label-title">Choose Videos</h5>
+                            <p style="font-size: 11px; color: var(--text-muted);" id="videos-label-name">Supports MP4, MOV, AVI (Max 50MB per video)</p>
+                            <input type="file" id="videos_input" name="videos[]" multiple accept="video/*" style="display: none;" onchange="handleMultipleVideosChange(this)">
                         </div>
                     </div>
                 </div>
@@ -1570,6 +1598,40 @@
         }
     }
 
+    function handleMultipleImagesChange(input) {
+        const title = document.getElementById('images-label-title');
+        const name = document.getElementById('images-label-name');
+
+        if (input.files.length > 0) {
+            title.textContent = "Selected Images";
+            name.textContent = `Selected: ${input.files.length} file(s)`;
+            name.style.color = "var(--primary-color)";
+            name.style.fontWeight = "bold";
+        } else {
+            title.textContent = "Choose Images";
+            name.textContent = "Supports JPEG, PNG, JPG, WEBP (Max 10MB per image)";
+            name.style.color = "";
+            name.style.fontWeight = "";
+        }
+    }
+
+    function handleMultipleVideosChange(input) {
+        const title = document.getElementById('videos-label-title');
+        const name = document.getElementById('videos-label-name');
+
+        if (input.files.length > 0) {
+            title.textContent = "Selected Videos";
+            name.textContent = `Selected: ${input.files.length} file(s)`;
+            name.style.color = "var(--primary-color)";
+            name.style.fontWeight = "bold";
+        } else {
+            title.textContent = "Choose Videos";
+            name.textContent = "Supports MP4, MOV, AVI (Max 50MB per video)";
+            name.style.color = "";
+            name.style.fontWeight = "";
+        }
+    }
+
     // Auto submit filter form on change
     function submitFilterForm() {
         document.getElementById('filter-form').submit();
@@ -1599,8 +1661,37 @@
 
     // Switch between Step 1 (General) and Step 2 (Report) in Single upload wizard
     function switchStep(step) {
-        document.getElementById('step-panel-1').style.display = (step === 1) ? 'block' : 'none';
-        document.getElementById('step-panel-2').style.display = (step === 2) ? 'block' : 'none';
+        const panel1 = document.getElementById('step-panel-1');
+        const panel2 = document.getElementById('step-panel-2');
+        
+        if (step === 2) {
+            // Validate step 1 fields (visible fields) before switching
+            const inputs = panel1.querySelectorAll('input, select, textarea');
+            let isValid = true;
+            for (let input of inputs) {
+                if (!input.checkValidity()) {
+                    input.reportValidity();
+                    isValid = false;
+                    break;
+                }
+            }
+            if (!isValid) return;
+
+            // Mark and remove 'required' from Step 1 inputs while they are hidden
+            panel1.querySelectorAll('[required]').forEach(input => {
+                input.setAttribute('data-was-required', 'true');
+                input.removeAttribute('required');
+            });
+        } else if (step === 1) {
+            // Restore 'required' to Step 1 inputs when they are visible
+            panel1.querySelectorAll('[data-was-required="true"]').forEach(input => {
+                input.setAttribute('required', 'required');
+                input.removeAttribute('data-was-required');
+            });
+        }
+
+        panel1.style.display = (step === 1) ? 'block' : 'none';
+        panel2.style.display = (step === 2) ? 'block' : 'none';
         
         const generalIndicator = document.getElementById('step-general-indicator');
         const reportIndicator = document.getElementById('step-report-indicator');

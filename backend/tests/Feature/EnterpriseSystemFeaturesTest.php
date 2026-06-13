@@ -80,7 +80,7 @@ class EnterpriseSystemFeaturesTest extends TestCase
         $this->actingAs($super);
         session(['admin_role' => 'super_admin']);
         $this->assertTrue($super->can('view', $diamondA));
-        $this->assertTrue($super->can('update', $diamondA));
+        $this->assertFalse($super->can('update', $diamondA)); // Super Admin cannot edit/update Normal Admin's diamond
         $this->assertTrue($super->can('delete', $diamondA));
         $this->assertTrue($super->can('publish', $diamondA));
 
@@ -91,7 +91,7 @@ class EnterpriseSystemFeaturesTest extends TestCase
         // Can access owned diamondA
         $this->assertTrue($adminA->can('view', $diamondA));
         $this->assertTrue($adminA->can('update', $diamondA));
-        $this->assertFalse($adminA->can('delete', $diamondA));
+        $this->assertTrue($adminA->can('delete', $diamondA)); // Normal Admin can delete owned diamond
         $this->assertTrue($adminA->can('publish', $diamondA));
 
         // Can view assigned diamondB
@@ -101,9 +101,9 @@ class EnterpriseSystemFeaturesTest extends TestCase
         $this->assertFalse($adminA->can('delete', $diamondB));
         $this->assertFalse($adminA->can('publish', $diamondB));
 
-        // Cannot delete if status is on_hold or sold
+        // Normal Admin can still delete owned diamond when status is on_hold or sold
         $diamondA->update(['inventory_status' => 'on_hold']);
-        $this->assertFalse($adminA->can('delete', $diamondA));
+        $this->assertTrue($adminA->can('delete', $diamondA));
 
         // 3. Acting as Normal Admin B
         $this->actingAs($adminB);
@@ -114,6 +114,103 @@ class EnterpriseSystemFeaturesTest extends TestCase
         $this->assertFalse($adminB->can('update', $diamondA));
         $this->assertFalse($adminB->can('delete', $diamondA));
         $this->assertFalse($adminB->can('publish', $diamondA));
+    }
+
+    /**
+     * Test HTTP requests for Diamond ownership-based permissions.
+     */
+    public function test_diamond_ownership_http_permissions()
+    {
+        $super = $this->getAdminUser('super_admin');
+        $adminA = $this->getAdminUser('normal_admin');
+        $adminB = $this->getAdminUser('normal_admin');
+
+        // Diamond owned by Admin A
+        $diamondA = Diamond::create([
+            'stock_no' => 'DIA-OWN-A',
+            'asking_price' => 1500,
+            'shape' => 'Round',
+            'size' => 0.75,
+            'user_id' => $adminA->id,
+            'created_by' => 'Normal Admin',
+            'status' => 'Approved',
+            'inventory_status' => 'available',
+        ]);
+
+        // 1. Acting as Super Admin
+        // Super Admin cannot edit/update Normal Admin's diamond -> returns 403
+        $response = $this->actingAs($super)
+            ->withSession(['admin_role' => 'super_admin'])
+            ->get(route('diamonds.edit', $diamondA->id));
+        $response->assertStatus(403);
+
+        $response = $this->actingAs($super)
+            ->withSession(['admin_role' => 'super_admin'])
+            ->put(route('diamonds.update', $diamondA->id), [
+                'stock_no' => 'DIA-OWN-A-UPDATED',
+                'asking_price' => 1600,
+            ]);
+        $response->assertStatus(403);
+
+        // Super Admin can delete Normal Admin's diamond
+        $response = $this->actingAs($super)
+            ->withSession(['admin_role' => 'super_admin'])
+            ->delete(route('diamonds.destroy', $diamondA->id));
+        $response->assertRedirect(route('diamonds.index'));
+        $this->assertDatabaseMissing('diamonds', ['id' => $diamondA->id]);
+
+        // Re-create diamondA for normal admin A tests
+        $diamondA = Diamond::create([
+            'stock_no' => 'DIA-OWN-A2',
+            'asking_price' => 1500,
+            'shape' => 'Round',
+            'size' => 0.75,
+            'user_id' => $adminA->id,
+            'created_by' => 'Normal Admin',
+            'status' => 'Approved',
+            'inventory_status' => 'available',
+        ]);
+
+        // 2. Acting as Normal Admin B (non-owner)
+        // Cannot edit / update / delete Admin A's diamond -> returns 403
+        $response = $this->actingAs($adminB)
+            ->withSession(['admin_role' => 'normal_admin'])
+            ->get(route('diamonds.edit', $diamondA->id));
+        $response->assertStatus(403);
+
+        $response = $this->actingAs($adminB)
+            ->withSession(['admin_role' => 'normal_admin'])
+            ->put(route('diamonds.update', $diamondA->id), [
+                'stock_no' => 'DIA-OWN-A2-UPDATED',
+            ]);
+        $response->assertStatus(403);
+
+        $response = $this->actingAs($adminB)
+            ->withSession(['admin_role' => 'normal_admin'])
+            ->delete(route('diamonds.destroy', $diamondA->id));
+        $response->assertStatus(403);
+
+        // 3. Acting as Normal Admin A (owner)
+        // Can edit / update / delete own diamond
+        $response = $this->actingAs($adminA)
+            ->withSession(['admin_role' => 'normal_admin'])
+            ->get(route('diamonds.edit', $diamondA->id));
+        $response->assertStatus(200);
+
+        // Update own diamond
+        $response = $this->actingAs($adminA)
+            ->withSession(['admin_role' => 'normal_admin'])
+            ->put(route('diamonds.update', $diamondA->id), [
+                'stock_no' => 'DIA-OWN-A2',
+                'asking_price' => 1800,
+            ]);
+        $response->assertRedirect();
+
+        $response = $this->actingAs($adminA)
+            ->withSession(['admin_role' => 'normal_admin'])
+            ->delete(route('diamonds.destroy', $diamondA->id));
+        $response->assertRedirect(route('diamonds.index'));
+        $this->assertDatabaseMissing('diamonds', ['id' => $diamondA->id]);
     }
 
     /**

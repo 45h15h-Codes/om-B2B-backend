@@ -18,20 +18,44 @@ class StorefrontJewelleryDetailResource extends JsonResource
 
         // Dynamic images array collector
         $images = [];
-        $specImages = $specs['images'] ?? null;
-        if (is_array($specImages)) {
-            foreach ($specImages as $img) {
+        $dbImages = $this->images;
+        if (is_array($dbImages) && count($dbImages) > 0) {
+            foreach ($dbImages as $img) {
                 if (!empty($img)) {
-                    $images[] = (str_starts_with($img, 'http://') || str_starts_with($img, 'https://')) ? $img : asset($img);
+                    $images[] = (str_starts_with($img, 'http://') || str_starts_with($img, 'https://')) 
+                        ? $img 
+                        : (str_starts_with($img, 'diamonds/') || str_starts_with($img, 'jewelleries/') ? \Illuminate\Support\Facades\Storage::disk('public')->url($img) : asset($img));
                 }
             }
-        } elseif (is_string($specImages) && !empty($specImages)) {
-            $images[] = (str_starts_with($specImages, 'http://') || str_starts_with($specImages, 'https://')) ? $specImages : asset($specImages);
+        } else {
+            $specImages = $specs['images'] ?? null;
+            if (is_array($specImages)) {
+                foreach ($specImages as $img) {
+                    if (!empty($img)) {
+                        $images[] = (str_starts_with($img, 'http://') || str_starts_with($img, 'https://')) ? $img : asset($img);
+                    }
+                }
+            } elseif (is_string($specImages) && !empty($specImages)) {
+                $images[] = (str_starts_with($specImages, 'http://') || str_starts_with($specImages, 'https://')) ? $specImages : asset($specImages);
+            }
         }
 
         // Fallback to legacy single image if specifications images array is empty
         if (empty($images) && !empty($this->image_url)) {
             $images[] = (str_starts_with($this->image_url, 'http://') || str_starts_with($this->image_url, 'https://')) ? $this->image_url : asset($this->image_url);
+        }
+
+        // Dynamic videos array collector
+        $videos = [];
+        $dbVideos = $this->videos;
+        if (is_array($dbVideos)) {
+            foreach ($dbVideos as $vid) {
+                if (!empty($vid)) {
+                    $videos[] = (str_starts_with($vid, 'http://') || str_starts_with($vid, 'https://')) 
+                        ? $vid 
+                        : (str_starts_with($vid, 'diamonds/') || str_starts_with($vid, 'jewelleries/') ? \Illuminate\Support\Facades\Storage::disk('public')->url($vid) : asset($vid));
+                }
+            }
         }
 
         return [
@@ -56,6 +80,7 @@ class StorefrontJewelleryDetailResource extends JsonResource
             'description' => $this->description,
             'price' => floatval($this->price ?? 0.00),
             'images' => $images,
+            'videos' => $videos,
             'availability' => $this->inventory_status === 'available',
             'created_at' => $this->created_at ? $this->created_at->utc()->format('Y-m-d\TH:i:s\Z') : null,
         ];

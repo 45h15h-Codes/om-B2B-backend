@@ -495,6 +495,20 @@
                         $syncLabel = 'Synced';
                         $syncClass = 'synced';
                     }
+
+                    $canEdit = true;
+                    if ($isDiamond) {
+                        $activeRole = session('admin_role', auth()->user()->role);
+                        if ($activeRole === 'super_admin') {
+                            if ($item->uploader_role === 'normal_admin') {
+                                $canEdit = false;
+                            }
+                        } else {
+                            if ((int)$item->user_id !== (int)auth()->id()) {
+                                $canEdit = false;
+                            }
+                        }
+                    }
                 @endphp
                 <tr>
                     <td style="text-align: center;">
@@ -555,9 +569,11 @@
                             <a href="{{ $viewRoute }}" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11.5px; height: 26px;" title="View Details">
                                 <i class="fa-solid fa-eye"></i>
                             </a>
-                            <a href="{{ $editRoute }}" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11.5px; height: 26px;" title="Edit Product">
-                                <i class="fa-solid fa-pen"></i>
-                            </a>
+                            @if($canEdit)
+                                <a href="{{ $editRoute }}" class="btn btn-secondary" style="padding: 4px 8px; font-size: 11.5px; height: 26px;" title="Edit Product">
+                                    <i class="fa-solid fa-pen"></i>
+                                </a>
+                            @endif
 
                             @can('hold', [\App\Models\InventoryRequest::class, $item])
                                 @if($item->inventory_status === 'available')

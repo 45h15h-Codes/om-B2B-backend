@@ -37,4 +37,6 @@ return [
         'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET'),
     ],
 
+    'partner_portal_url' => env('PARTNER_PORTAL_URL', env('APP_URL')),
+
 ];

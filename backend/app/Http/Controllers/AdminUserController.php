@@ -247,6 +247,23 @@ class AdminUserController extends Controller
             return back()->with('error', 'You can only delete normal admin users.');
         }
 
+        // Find and update related partnership request before deleting the user
+        $partnershipRequest = \App\Models\PartnershipRequest::where('converted_to_user_id', $admin->id)->first();
+        if ($partnershipRequest) {
+            $revocationNote = "Partner account was removed by Super Admin. Approval has been revoked.";
+            $newNotes = !empty($partnershipRequest->notes)
+                ? $partnershipRequest->notes . "\n\n" . $revocationNote
+                : $revocationNote;
+
+            $partnershipRequest->update([
+                'status' => 'Rejected',
+                'rejected_at' => now(),
+                'rejected_by' => Auth::id(),
+                'notes' => $newNotes,
+                'converted_to_user_id' => null,
+            ]);
+        }
+
         $admin->delete();
 
         return redirect()->route('admins.index')->with('success', 'Normal admin deleted successfully.');
